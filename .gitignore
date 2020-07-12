@@ -1,0 +1,10 @@
+*.ex
+tmp_build_dir/
+*.eps
+plt*
+plt*/
+chk*/
+results*/
+*.ppt*
+Backtrace*
+
