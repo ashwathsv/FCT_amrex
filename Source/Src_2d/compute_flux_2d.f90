@@ -28,10 +28,16 @@ subroutine compute_con_flux(level, ddir, nc, lo, hi,  &
     real(amrex_real), parameter :: half = 0.5_amrex_real
     integer :: i, j, k, n, ng, nghost(2)
     integer :: ilo, ihi, jlo, jhi, klo, khi
+    character(len=128) :: fname, dirchar, levchar
+    integer :: id(3)
 
+    write(dirchar,fmt='(i2.2)') ddir
+    write(levchar,fmt='(i2.2)') level
 
     flxx(:,:,:,pre) = 0.0_amrex_real
     flxy(:,:,:,pre) = 0.0_amrex_real
+    print*,"fx_lo= ",fx_lo,"fx_hi= ",fx_hi
+    print*,"fy_lo= ",fy_lo,"fy_hi= ",fy_hi
 
 
     ! do k = fx_lo(3), fx_hi(3)
@@ -113,7 +119,71 @@ subroutine compute_con_flux(level, ddir, nc, lo, hi,  &
       enddo
     ! endif
 
+    if(ddir == 1) then
       print*,"max(abs(flxy))= ", maxval(abs(flxy(:,:,:,rov)))
+      if(maxval(abs(flxy(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"non-zero y-momentum convective flux for x-direction shock..aborting"
+        id = maxloc(abs(flxy(:,:,:,rov)))
+        print*,"location of nonzero val is: ",maxloc(abs(flxy(:,:,:,rov)))
+        print*,"max(abs(rov))= ",maxval(abs(u0(:,:,:,rov)))
+        ! print*,"rov(i,j)= ",u0(id(1)-1,id(2)-1,id(3)-1,rov),", ro(i,j)= ",u0(id(1)-1,id(2)-1,id(3)-1,ro),&
+        ! ", rov(i,j-1)= ",u0(id(1)-1,id(2)-1-1,id(3)-1,rov),", ro(i,j-1)= ",u0(id(1)-1,id(2)-1-1,id(3)-1,ro)
+        call exit(123)
+      endif
+    else
+      print*,"max(abs(flxx))= ", maxval(abs(flxx(:,:,:,rou)))
+      if(maxval(abs(flxx(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"non-zero x-momentum convective flux for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(flxx(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif
+    !!-----------------------------------------------------------
+    ! fname = "flxxd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = fx_lo(2), fx_hi(2)
+    !     do i = fx_lo(1), fx_hi(1)
+    !       ! if(level == 0) then
+    !         if(j == lo(2)) then
+    !           WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !           1200 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         endif
+    !       ! else
+    !           ! WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111)
+    ! !!-----------------------------------------------------------
+    ! !!-------------------------------------------------------
+    ! ! print*,"name= ",name, "length= ",length
+    ! fname = "flxyd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=112,file=fname)
+    ! ! write(112,1100) time
+    ! write(112,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = fy_lo(2), fy_hi(2)
+    !     do i = fy_lo(1), fy_hi(1)
+    !       ! if(level == 0) then
+    !         if(i == lo(1)) then
+    !           WRITE(112,1201) i, j, flxy(i,j,k,ro), flxy(i,j,k,rou), flxy(i,j,k,rov), flxy(i,j,k,roE), flxy(i,j,k,pre)
+    !           1201 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         endif
+    !       ! else
+    !           ! WRITE(112,1201) i, j, flxy(i,j,k,ro), flxy(i,j,k,rou), flxy(i,j,k,rov), flxy(i,j,k,roE), flxy(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(112)
+    ! !!-----------------------------------------------------------
 
 end subroutine compute_con_flux
 
@@ -147,13 +217,16 @@ subroutine compute_diff_flux( level, ddir, nc, dtdx, dtdy, lo, hi,  &
   real(amrex_real) :: dxdt, dydt, epsx, epsy, nux, nuy
   real(amrex_real), parameter :: one3 = 1.d0/3.d0, one6 = 1.d0/6.d0
 
+  integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
+  character(len=128) :: fname, dirchar, levchar
+
+  write(dirchar,fmt='(i2.2)') ddir
+  write(levchar,fmt='(i2.2)') level
+
   dxdt = 1.d0/dtdx
   dydt = 1.d0/dtdy
 
   ! calculate the diffusion fluxes in x-direction (do not include the last cell)
-  ! if(ddir == 2) then
-  !   fldy = 0.0_amrex_real
-  ! else
   do k = fdx_lo(3), fdx_hi(3)
     do j = fdx_lo(2), fdx_hi(2)
       do i = fdx_lo(1)+1, fdx_hi(1)-1
@@ -202,7 +275,69 @@ subroutine compute_diff_flux( level, ddir, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
-! endif
+
+    if(ddir == 1) then
+      print*,"max(abs(fldy))= ", maxval(abs(fldy(:,:,:,rov)))
+      if(maxval(abs(fldy(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"non-zero y-momentum diffusive flux for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(fldy(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      print*,"max(abs(fldx))= ", maxval(abs(fldx(:,:,:,rou)))
+      if(maxval(abs(fldx(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"non-zero x-momentum diffusive flux for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(fldx(:,:,:,rov)))
+        call exit(123)
+      endif
+    endif
+
+    !!-----------------------------------------------------------
+    ! fname = "fldxd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = fdx_lo(2), fdx_hi(2)
+    !     do i = fdx_lo(1), fdx_hi(1)
+    !       ! if(level == 0) then
+    !         if(j == lo(2)) then
+    !           WRITE(111,1200) i, j, fldx(i,j,k,ro), fldx(i,j,k,rou), fldx(i,j,k,rov), fldx(i,j,k,roE)
+    !           1200 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         endif
+    !       ! else
+    !           ! WRITE(111,1200) i, j, fldx(i,j,k,ro), fldx(i,j,k,rou), fldx(i,j,k,rov), fldx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111)
+    ! !!-----------------------------------------------------------
+    ! !!-------------------------------------------------------
+    ! ! print*,"name= ",name, "length= ",length
+    ! fname = "fldyd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=112,file=fname)
+    ! ! write(112,1100) time
+    ! write(112,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = fdy_lo(2), fdy_hi(2)
+    !     do i = fdy_lo(1), fdy_hi(1)
+    !       ! if(level == 0) then
+    !         if(i == lo(1)) then
+    !           WRITE(112,1201) i, j, fldy(i,j,k,ro), fldy(i,j,k,rou), fldy(i,j,k,rov), fldy(i,j,k,roE)
+    !           1201 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         endif
+    !       ! else
+    !           ! WRITE(112,1201) i, j, fldy(i,j,k,ro), fldy(i,j,k,rou), fldy(i,j,k,rov), fldy(i,j,k,roE), flxy(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(112)
+    !!-----------------------------------------------------------
 
 end subroutine compute_diff_flux
 
@@ -289,7 +424,21 @@ endif
   enddo
 ! endif
 
-
+    if(ddir == 1) then
+      print*,"max(abs(flsy))= ", maxval(abs(flsy(:,:,:,rov)))
+      ! if(maxval(abs(flsy(:,:,:,rov))) > 0.0_amrex_real) then
+      !   print*,"non-zero y-momentum source flux for x-direction shock..aborting"
+      !   print*,"location of nonzero val is: ",maxloc(abs(flsy(:,:,:,rov)))
+      !   call exit(123)
+      ! endif
+    else
+      print*,"max(abs(flsx))= ", maxval(abs(flsx(:,:,:,rou)))
+      ! if(maxval(abs(flsx(:,:,:,rov))) > 0.0_amrex_real) then
+      !   print*,"non-zero x-momentum source flux for y-direction shock..aborting"
+      !   print*,"location of nonzero val is: ",maxloc(abs(flsx(:,:,:,rov)))
+      !   call exit(123)
+      ! endif
+    endif
 end subroutine compute_source_flux
 !------------------------------------------------------------------------------------------
 ! Subroutine to compute anti-diffusive fluxes 
@@ -374,6 +523,7 @@ subroutine compute_ad_flux( level, ddir, time, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
+  ! print*,"calculated x-antidiffusive fluxes"
     !-------------------------------------------------------
     ! print*,"name= ",name, "length= ",length
     ! fname = "fltxd" // trim(dirchar) // ".txt"
@@ -431,6 +581,7 @@ subroutine compute_ad_flux( level, ddir, time, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
+  ! print*,"calculated y-antidiffusive fluxes"
     !-------------------------------------------------------
     ! print*,"name= ",name, "length= ",length
     ! fname = "fltyd" // trim(dirchar) // ".txt"
@@ -454,10 +605,22 @@ subroutine compute_ad_flux( level, ddir, time, nc, dtdx, dtdy, lo, hi,  &
     ! close(112)
     !-----------------------------------------------------------
 ! Perform the prelimiting step for flux correction (for x-direction fluxes)
+! print*,"lo= ",lo,", hi= ",hi
+! print*,"ftx_lo= ",ftx_lo,", ftx_hi= ",ftx_hi
+if(level == 0) then
+  ilo = lo(1)-1; ihi = hi(1)+1
+  jlo = lo(2); jhi = hi(2)
+  klo = lo(3); khi = hi(3)
+else
+  ilo = lo(1)-2; ihi = hi(1)+3
+  jlo = lo(2)-3; jhi = hi(2)+3
+  klo = lo(3); khi = hi(3)
+endif
 do n = 0, nc-2
-  do k = lo(3), hi(3)
-    do j = lo(2), hi(2)
-      do i = lo(1)-1, hi(1)+1
+  do k = klo, khi
+    do j = jlo, jhi
+      do i = ilo, ihi
+        ! print*,"i= ",i,"j= ",j,"k= ",k,"n= ",n,"reached here"
         fltmp(n) = abs(fltx(i,j,k,n))
         sgn(n)   = sign(1.0_amrex_real, utemp(i,j,k,n) - utemp(i-1,j,k,n))
         du(n)    = utemp(i-1,j,k,n) - utemp(i-2,j,k,n)
@@ -466,13 +629,38 @@ do n = 0, nc-2
       enddo
     enddo
   enddo
+  ! extrapolate to the end points (zero-order extrapolation)
+  if(level > 0) then
+    do k = ftx_lo(3), ftx_hi(3)
+      do j = ftx_lo(2), ftx_hi(2)
+        fltx(ftx_lo(1)+1,j,k,n) = fltx(ftx_lo(1)+2,j,k,n)
+        fltx(ftx_lo(1),j,k,n) = fltx(ftx_lo(1)+2,j,k,n)
+        fltx(ftx_hi(1)-1,j,k,n) = fltx(ftx_hi(1)-2,j,k,n)
+        fltx(ftx_hi(1),j,k,n) = fltx(ftx_hi(1)-2,j,k,n)
+      enddo
+      do i = ftx_lo(1), ftx_hi(1)
+        fltx(i,ftx_lo(2),k,n) = fltx(i,ftx_lo(2)+1,k,n)
+        fltx(i,ftx_hi(2),k,n) = fltx(i,ftx_hi(2)-1,k,n)
+      enddo
+    enddo
+  endif
 enddo
+! print*,"prelimited x-antidiffusive fluxes"
 
+if(level == 0) then
+  ilo = lo(1); ihi = hi(1)
+  jlo = lo(2)-1; jhi = hi(2)+1
+  klo = lo(3); khi = hi(3)
+else
+  ilo = lo(1)-3; ihi = hi(1)+3
+  jlo = lo(2)-2; jhi = hi(2)+3
+  klo = lo(3); khi = hi(3)
+endif
 ! Perform the prelimiting step for flux correction (for y-direction fluxes)
 do n = 0, nc-2
-  do k = lo(3), hi(3)
-    do j = lo(2)-1, hi(2)+1
-      do i = lo(1), hi(1)
+  do k = klo, khi
+    do j = jlo, jhi
+      do i = ilo, ihi
         fltmp(n) = abs(flty(i,j,k,n))
         sgn(n)   = sign(1.0_amrex_real, utemp(i,j,k,n) - utemp(i,j-1,k,n))
         du(n)    = utemp(i,j-1,k,n) - utemp(i,j-2,k,n)
@@ -481,7 +669,22 @@ do n = 0, nc-2
       enddo
     enddo
   enddo
+! extrapolate to the end points (zero-order extrapolation)
+  if(level > 0) then
+    do k = fty_lo(3), fty_hi(3)
+      do j = fty_lo(2), fty_hi(2)
+        flty(fty_lo(1),j,k,n) = flty(fty_lo(1)+1,j,k,n)
+        flty(fty_hi(1),j,k,n) = flty(fty_hi(1)-1,j,k,n)
+      enddo
+      do i = fty_lo(1), fty_hi(1)
+        flty(i,fty_lo(2)+1,k,n) = flty(i,fty_lo(2)+2,k,n)
+        flty(i,fty_lo(2),k,n) = flty(i,fty_lo(2)+1,k,n)
+        flty(i,fty_hi(2),k,n) = flty(i,fty_hi(2)-1,k,n)
+      enddo
+    enddo
+  endif
 enddo
+! print*,"prelimited y-antidiffusive fluxes"
 
 ! This gives us f^a'(i+1/2,j) and f^a'(i,j+1/2) for all faces 
 

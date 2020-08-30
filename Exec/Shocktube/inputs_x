@@ -4,25 +4,25 @@ stop_time = 10.0
 #	COMPONENTS
 # ncomp = 5
 domdir = 1	#	1: x, 2: y
-max_rk = 4
+max_rk = 2
 
 # PROBLEM SIZE & GEOMETRY
 geometry.is_periodic =  0  1  1
 geometry.coord_sys   =  0       # 0 => cart
 geometry.prob_lo     =  0.0  0.0  1.0 
-geometry.prob_hi     =  200.0  1.0  1.0
-amr.n_cell           =  1024  8   1
+geometry.prob_hi     =  200.0  10.0  1.0
+amr.n_cell           =  512  8   1
 
 # VERBOSITY
 amr.v              = 1       # verbosity in Amr
 
 # REFINEMENT
-amr.max_level       = 0       # maximum level number allowed
+amr.max_level       = 1       # maximum level number allowed
 amr.ref_ratio       = 2 2 2 2 # refinement ratio
 amr.blocking_factor = 8       # block factor in grid generation
 amr.max_grid_size   = 2048
 
-amr.regrid_int      = 2       # how often to regrid
+amr.regrid_int      = 1       # how often to regrid
 
 # TIME STEP CONTROL
 adv.cfl            = 0.4     # cfl number for hyperbolic system

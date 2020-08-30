@@ -87,7 +87,7 @@ subroutine get_face_velocity(level, time, lo, hi, &
     !  the end face values are the same as the values before/after it
     do i = vy_l1, vy_h1
       vy(i,vy_l2) = vy(i,vy_l2+1)
-      vx(i,vy_h2) = vy(i,vy_h2-1)
+      vy(i,vy_h2) = vy(i,vy_h2-1)
     enddo
   endif  
   
@@ -129,7 +129,7 @@ subroutine get_face_velocity_dt(level, time, &
 
   integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
 
-  if(level == 0) then 
+  ! if(level == 0) then 
     if(domdir == 1) then
       vy = 0.0_amrex_real
     else
@@ -152,6 +152,11 @@ subroutine get_face_velocity_dt(level, time, &
           v1 = phi(i-1,j,k,rou)/phi(i-1,j,k,ro)
           v2 = phi(i,j,k,rou)/phi(i,j,k,ro)
           vx(i,j) = 0.5_amrex_real*(v1 + v2)
+            if(isnan(vx(i,j))) then
+                print*,"location = (", i, ", ",j,"), Exiting..NaN found in ucx (convection update): ", phi(i,j,k,ro), ", ", phi(i,j,k,rou), &
+                &      ", ", phi(i,j,k,rov), ", ", phi(i,j,k,roE), ", ", phi(i,j,k,pre) 
+                call exit(123)
+            endif           
         enddo
       enddo
     else
@@ -161,6 +166,11 @@ subroutine get_face_velocity_dt(level, time, &
           v1 = phi(i,j-1,k,rov)/phi(i,j-1,k,ro)
           v2 = phi(i,j,k,rov)/phi(i,j,k,ro)
           vy(i,j) = 0.5_amrex_real*(v1 + v2)
+            if(isnan(vy(i,j))) then
+                print*,"location = (", i, ", ",j,"), Exiting..NaN found in ucx (convection update): ", phi(i,j,k,ro), ", ", phi(i,j,k,rou), &
+                &      ", ", phi(i,j,k,rov), ", ", phi(i,j,k,roE), ", ", phi(i,j,k,pre) 
+                call exit(123)
+            endif 
         enddo
       enddo 
     endif
@@ -202,10 +212,10 @@ subroutine get_face_velocity_dt(level, time, &
       enddo
     endif  
     ! print*,"umax = ",umax 
-  else
-    print*,"entered get_face_velocity_dt() for level = ", level, ", how?????"
-    call exit(123)
-  endif
+  ! else
+  !   print*,"entered get_face_velocity_dt() for level = ", level, ", how?????"
+  !   call exit(123)
+  ! endif
     
   
 end subroutine get_face_velocity_dt

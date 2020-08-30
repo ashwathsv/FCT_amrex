@@ -53,7 +53,6 @@ module LCPFCT_module
   integer :: i, j, k, n
   integer :: ilo, ihi, jlo, jhi, klo, khi
   real(amrex_real) :: dtdx, dtdy, coeff, dxdt, dydt
-  real(amrex_real) :: nuW, nuE, nuS, nuN
   integer :: ftx_lo(3), ftx_hi(3)
   integer :: fty_lo(3), fty_hi(3)
   integer :: ut_lo(3), ut_hi(3) 
@@ -63,8 +62,10 @@ module LCPFCT_module
   real(amrex_real), dimension(:,:,:,:), pointer, contiguous :: fltx, flty, utemp, frin, frout
   real(amrex_real), dimension(:), pointer, contiguous :: umin, umax, flin, flout, temp
 
-  character(len=128) :: dirchar, fname
+  character(len=128) :: dirchar, fname, levchar, rkchar
   write(dirchar,fmt='(i2.2)') ddir
+  write(levchar,fmt='(i2.2)') level
+  write(rkchar,fmt='(i2.2)') rk
   if(rk_max == 4) then
     if(rk == 1) then
       coeff = 0.25_amrex_real
@@ -125,6 +126,22 @@ module LCPFCT_module
       utemp = uout
     endif
 
+    if(ddir == 1) then
+      if(maxval(abs(flxy(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"max(abs(flxy))= ", maxval(abs(flxy(:,:,:,rov)))
+        print*,"non-zero y-momentum convective(LCPFCT_2D) flux for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(flxy(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      if(maxval(abs(flxx(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"max(abs(flxx))= ", maxval(abs(flxx(:,:,:,rou)))
+        print*,"non-zero x-momentum convective(LCPFCT_2D) flux for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(flxx(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif
+
     do n = 0,nc-2 ! do not update pressure here
       do k = klo, khi
         do j = jlo, jhi
@@ -152,7 +169,6 @@ module LCPFCT_module
         enddo
       enddo
     enddo
-
 !--------------------------------
 ! print out pressure at end of convection
 ! do k = klo, khi
@@ -168,19 +184,62 @@ module LCPFCT_module
       do n = 0, nc-2
         do k = klo, khi
           do j = jlo, jhi
-            ucx(ilo-1,j,k,n)  = ucx(ilo,j,k,n);  ucx(ihi+1,j,k,n)  = ucx(ihi,j,k,n);
+            ucx(ilo-1,j,k,n)  = ucx(ilo,j,k,n);  ucx(ihi+1,j,k,n)  = ucx(ihi,j,k,n)
             ucy(ilo-1,j,k,n)  = ucy(ilo,j,k,n);  ucy(ihi+1,j,k,n)  = ucy(ihi,j,k,n)
-            uout(ilo-1,j,k,n) = uout(ilo,j,k,n); uout(ihi+1,j,k,n) = uout(ihi,j,k,n);
+            uout(ilo-1,j,k,n) = uout(ilo,j,k,n); uout(ihi+1,j,k,n) = uout(ihi,j,k,n)
           enddo
           do i = ilo-1,ihi+1           
-            ucx(i,jlo-1,k,n)  = ucx(i,jlo,k,n);  ucx(i,jhi+1,k,n)  = ucx(i,jhi,k,n);
+            ucx(i,jlo-1,k,n)  = ucx(i,jlo,k,n);  ucx(i,jhi+1,k,n)  = ucx(i,jhi,k,n)
             ucy(i,jlo-1,k,n)  = ucy(i,jlo,k,n);  ucy(i,jhi+1,k,n)  = ucy(i,jhi,k,n)
-            uout(i,jlo-1,k,n) = uout(i,jlo,k,n); uout(i,jhi+1,k,n) = uout(i,jhi,k,n);
+            uout(i,jlo-1,k,n) = uout(i,jlo,k,n); uout(i,jhi+1,k,n) = uout(i,jhi,k,n)
           enddo
         enddo
       enddo
     endif
-    ! fname = "ucxd" // trim(dirchar) // ".txt"
+
+    ! fname = "uoutcond" // trim(dirchar) // "rk" // trim(rkchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = uo_lo(2), uo_hi(2)
+    !     do i = uo_lo(1), uo_hi(1)
+    !       ! if(level == 0) then
+    !         ! if(j == lo(2) .or. j == lo(2)-1) then
+    !           WRITE(111,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !           1202 format(I3,2x,I3,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10)
+    !         ! endif
+    !         ! if(level > 0) then
+    !         !   WRITE(*,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !         !   1202 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         ! endif              
+    !       ! else
+    !           ! WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111)
+
+    if(ddir == 1) then
+      if(maxval(abs(uout(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rov)))
+        print*,"non-zero y-momentum at end of convection(LCPFCT_2D) for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      if(maxval(abs(uout(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rou)))
+        print*,"non-zero x-momentum at end of convection(LCPFCT_2D) for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif
+
+    ! fname = "ucxd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
     ! open(unit=111,file=fname)
     ! write(111,1100) time
     ! 1100 format('Time= ',F10.5) 
@@ -197,10 +256,9 @@ module LCPFCT_module
     !   enddo
     ! enddo
     ! close(111)
-    !-----------------------------------------------------------
-    !-------------------------------------------------------
-    ! print*,"name= ",name, "length= ",length
-    ! fname = "ucyd" // trim(dirchar) // ".txt"
+    ! ! -----------------------------------------------------------
+    ! ! -------------------------------------------------------
+    ! fname = "ucyd" // trim(dirchar) // "l" // trim(levchar) // ".txt"
     ! open(unit=112,file=fname)
     ! write(112,1100) time
     ! write(112,*) "# j density  x-mom y-mom energy"
@@ -216,8 +274,8 @@ module LCPFCT_module
     !   enddo
     ! enddo
     ! close(112)
-    !-----------------------------------------------------------
-    ! convective step good (same results in x, y propagation)
+    ! ! -----------------------------------------------------------
+    ! convective step good for 2 level runs (same results in x, y propagation)
     ! allocate arrays for diffusion stage
     ftx_lo = fx_lo; ftx_hi = fx_hi
     fty_lo = fy_lo; fty_hi = fy_hi
@@ -232,11 +290,12 @@ module LCPFCT_module
       &                 fltx, ftx_lo, ftx_hi,    &
       &                 flty, fty_lo, fty_hi     )
 
-
-    do n = 0,nc-2
-      flxx(:,:,:,n)  = flxx(:,:,:,n) + fltx(:,:,:,n)
-      flxy(:,:,:,n)  = flxy(:,:,:,n) + flty(:,:,:,n) 
-    enddo
+    if(rk == rk_max) then
+      do n = 0,nc-2
+        flxx(:,:,:,n)  = flxx(:,:,:,n) + fltx(:,:,:,n)
+        flxy(:,:,:,n)  = flxy(:,:,:,n) + flty(:,:,:,n) 
+      enddo
+    endif
 
     do n = 0,nc-2    
       do k = klo, khi
@@ -267,6 +326,49 @@ module LCPFCT_module
         enddo
       enddo
     endif
+
+    ! fname = "uoutdifd" // trim(dirchar) // "rk" // trim(rkchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = uo_lo(2), uo_hi(2)
+    !     do i = uo_lo(1), uo_hi(1)
+    !       ! if(level == 0) then
+    !         ! if(j == lo(2) .or. j == lo(2)-1) then
+    !           WRITE(111,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !           ! 1202 format(I3,2x,I3,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10)
+    !         ! endif
+    !         ! if(level > 0) then
+    !         !   WRITE(*,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !         !   1202 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         ! endif              
+    !       ! else
+    !           ! WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111)
+
+    if(ddir == 1) then
+      if(maxval(abs(uout(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rov)))
+        print*,"non-zero y-momentum at end of diffusion(LCPFCT_2D) for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      if(maxval(abs(uout(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rou)))
+        print*,"non-zero x-momentum at end of diffusion(LCPFCT_2D) for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif
+
     ! diffusion step also works fine (same solution for x, y propagation)
 
     ! compute source terms (these variables are stored again in fltx and flty)
@@ -276,6 +378,13 @@ module LCPFCT_module
       &                 vy, vy_lo, vy_hi,        &
       &                 fltx, ftx_lo, ftx_hi,    &
       &                 flty, fty_lo, fty_hi     )
+
+    if(rk == rk_max) then
+      do n = 0,nc-2
+        flxx(:,:,:,n)  = flxx(:,:,:,n) + fltx(:,:,:,n)
+        flxy(:,:,:,n)  = flxy(:,:,:,n) + flty(:,:,:,n) 
+      enddo
+    endif
 
     ! update source terms and store results (ro^l) in uout
     do n = 0,nc-2
@@ -309,7 +418,49 @@ module LCPFCT_module
           enddo
         enddo
       enddo
-    endif    
+    endif  
+
+    ! fname = "uoutsrcd" // trim(dirchar) // "rk" // trim(rkchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = uo_lo(2), uo_hi(2)
+    !     do i = uo_lo(1), uo_hi(1)
+    !       ! if(level == 0) then
+    !         ! if(j == lo(2) .or. j == lo(2)-1) then
+    !           WRITE(111,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !           ! 1202 format(I3,2x,I3,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10)
+    !         ! endif
+    !         ! if(level > 0) then
+    !         !   WRITE(*,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !         !   1202 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         ! endif              
+    !       ! else
+    !           ! WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111) 
+
+    if(ddir == 1) then
+      if(maxval(abs(uout(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rov)))
+        print*,"non-zero y-momentum at end of source(LCPFCT_2D) for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      if(maxval(abs(uout(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rou)))
+        print*,"non-zero x-momentum at end of source(LCPFCT_2D) for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif 
 
     call bl_deallocate(utemp)
     call bl_deallocate(fltx)
@@ -337,17 +488,27 @@ module LCPFCT_module
       &                 fltx, ftx_lo, ftx_hi,    &
       &                 flty, fty_lo, fty_hi     )
 
+    if(level == 0) then
+      ilo = lo(1)-1; ihi = hi(1)+1
+      jlo = lo(2)-1; jhi = hi(2)+1
+      klo = lo(3);   khi = hi(3)
+    else
+      ilo = lo(1)-3; ihi = hi(1)+3
+      jlo = lo(2)-3; jhi = hi(2)+3
+      klo = lo(3);   khi = hi(3)
+    endif
+
     call bl_allocate(umin,0,nc-2)
     call bl_allocate(umax,0,nc-2)
-    call bl_allocate(frin,lo(1)-1,hi(1)+1,lo(2)-1,hi(2)+1,ut_lo(3),ut_hi(3),0,nc-2)
-    call bl_allocate(frout,lo(1)-1,hi(1)+1,lo(2)-1,hi(2)+1,ut_lo(3),ut_hi(3),0,nc-2)
+    call bl_allocate(frin,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-2)
+    call bl_allocate(frout,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-2)
     call bl_allocate(flin,0,nc-2)
     call bl_allocate(flout,0,nc-2)
     ! Flux correction procedure (steps A, C-F in Devore)
     do n = 0,nc-2
       do k = lo(3), hi(3)
-        do j = lo(2)-1, hi(2)+1
-          do i = lo(1)-1, hi(1)+1
+        do j = jlo, jhi
+          do i = ilo, ihi
             ! Limits for conserved variables
             umin(n) = min(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
             umax(n) = max(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
@@ -360,12 +521,8 @@ module LCPFCT_module
             &        + max(flty(i,j+1,k,n),0.d0) - min(flty(i,j,k,n),0.d0)
 
             ! calculate fractions of incoming and outgoing fluxes applied to each cell
-            ! if(flin(n) > 0.0_amrex_real) then
               frin(i,j,k,n) = (umax(n) - utemp(i,j,k,n))/(1E-16_amrex_real + flin(n))
-            ! endif
-            ! if(flout(n) > 0.0_amrex_real) then
               frout(i,j,k,n) = (utemp(i,j,k,n) - umin(n))/(1E-16_amrex_real + flout(n))
-            ! endif
 
             if(isnan(frin(i,j,k,n))) then
                 print*,"location = (", i, ", ",j,"), Exiting..NaN found in frin (step C): ", &
@@ -385,12 +542,21 @@ module LCPFCT_module
     enddo
 
     call bl_allocate(temp,0,nc-2)
+    if(level == 0) then
+      ilo = lo(1); ihi = hi(1)+1
+      jlo = lo(2); jhi = hi(2)
+      klo = lo(3);   khi = hi(3)
+    else
+      ilo = lo(1)-2; ihi = hi(1)+3
+      jlo = lo(2)-3; jhi = hi(2)+3
+      klo = lo(3);   khi = hi(3)
+    endif
     ! calculate the corrected fluxes before updating the conserved variables
     do n = 0,nc-2
       ! update fluxes at faces whose normals are in x-direction (fltx)
-      do k = lo(3), hi(3)
-        do j = lo(2), hi(2)
-          do i = lo(1), hi(1)+1
+      do k = klo, khi
+        do j = jlo, jhi
+          do i = ilo, ihi
             temp(n) = fltx(i,j,k,n)
             if(temp(n) >= 0.d0) then
               fltx(i,j,k,n) = temp(n)*min(frout(i-1,j,k,n),frin(i,j,k,n),1.d0)
@@ -400,10 +566,37 @@ module LCPFCT_module
           enddo
         enddo
       enddo
+    ! extrapolate to the end points (zero-order extrapolation)
+    if(level > 0) then
+      do k = ftx_lo(3), ftx_hi(3)
+        do j = ftx_lo(2), ftx_hi(2)
+          fltx(ftx_lo(1)+1,j,k,n) = fltx(ftx_lo(1)+2,j,k,n)
+          fltx(ftx_lo(1),j,k,n) = fltx(ftx_lo(1)+2,j,k,n)
+          fltx(ftx_hi(1)-1,j,k,n) = fltx(ftx_hi(1)-2,j,k,n)
+          fltx(ftx_hi(1),j,k,n) = fltx(ftx_hi(1)-2,j,k,n)
+        enddo
+        do i = ftx_lo(1), ftx_hi(1)
+          fltx(i,ftx_lo(2),k,n) = fltx(i,ftx_lo(2)+1,k,n)
+          fltx(i,ftx_hi(2),k,n) = fltx(i,ftx_hi(2)-1,k,n)
+        enddo
+      enddo
+    endif
+  enddo
+
+    if(level == 0) then
+      ilo = lo(1); ihi = hi(1)
+      jlo = lo(2); jhi = hi(2)+1
+      klo = lo(3);   khi = hi(3)
+    else
+      ilo = lo(1)-3; ihi = hi(1)+3
+      jlo = lo(2)-2; jhi = hi(2)+3
+      klo = lo(3);   khi = hi(3)
+    endif
       ! update fluxes at faces whose normals are in y-direction (flty)
-      do k = lo(3), hi(3)
-        do j = lo(2), hi(2)+1
-          do i = lo(1), hi(1)
+    do n = 0,nc-2
+      do k = klo, khi
+        do j = jlo, jhi
+          do i = ilo, ihi
             temp(n) = flty(i,j,k,n)
             if(temp(n) >= 0.d0) then
               flty(i,j,k,n) = temp(n)*min(frout(i,j-1,k,n),frin(i,j,k,n),1.d0)
@@ -413,13 +606,38 @@ module LCPFCT_module
           enddo
         enddo
       enddo
-    enddo
+    ! extrapolate to the end points (zero-order extrapolation)
+    if(level > 0) then
+      do k = fty_lo(3), fty_hi(3)
+        do j = fty_lo(2), fty_hi(2)
+          flty(fty_lo(1),j,k,n) = flty(fty_lo(1)+1,j,k,n)
+          flty(fty_hi(1),j,k,n) = flty(fty_hi(1)-1,j,k,n)
+        enddo
+        do i = fty_lo(1), fty_hi(1)
+          flty(i,fty_lo(2)+1,k,n) = flty(i,fty_lo(2)+2,k,n)
+          flty(i,fty_lo(2),k,n) = flty(i,fty_lo(2)+1,k,n)
+          flty(i,fty_hi(2)-1,k,n) = flty(i,fty_hi(2)-2,k,n)
+          flty(i,fty_hi(2),k,n) = flty(i,fty_hi(2)-1,k,n)
+        enddo
+      enddo
+    endif
+  enddo
 
     ! update conserved variables
+    if(level == 0) then
+      ilo = lo(1); ihi = hi(1)
+      jlo = lo(2); jhi = hi(2)
+      klo = lo(3); khi = hi(3)
+    else
+      ilo = lo(1)-3; ihi = hi(1)+3
+      jlo = lo(2)-3; jhi = hi(2)+3
+      klo = lo(3);   khi = hi(3)
+    endif
+
     do n = 0,nc-2
-      do k = lo(3),hi(3)
-        do j = lo(2),hi(2)
-          do i = lo(1), hi(1)
+      do k = klo,khi
+        do j = jlo,jhi
+          do i = ilo,ihi
             uout(i,j,k,n) = utemp(i,j,k,n) - (fltx(i+1,j,k,n) - fltx(i,j,k,n)) &
             &             - (flty(i,j+1,k,n) - flty(i,j,k,n))
           enddo
@@ -428,23 +646,45 @@ module LCPFCT_module
     enddo
 
     ! update pressure
-    do k = lo(3),hi(3)
-      do j = lo(2),hi(2)
-        do i = lo(1),hi(1)
+    do k = klo,khi
+      do j = jlo,jhi
+        do i = ilo,ihi
           uout(i,j,k,pre) = (gma-1)*( uout(i,j,k,roE)                       &
           &               -  half*( (uout(i,j,k,rou)**2 + uout(i,j,k,rov)**2)/uout(i,j,k,ro) ) )
         enddo
       enddo
     enddo
+    ! extrapolate to end points (zero-order extrapolation)
+    if(level > 0) then
+      do n = 0,nc-1
+        do k = klo,khi
+          do j = uo_lo(2)+1,uo_hi(2)-1
+            uout(uo_lo(1),j,k,n) = uout(uo_lo(1)+1,j,k,n)
+            uout(uo_hi(1),j,k,n) = uout(uo_hi(1)-1,j,k,n)
+          enddo
+          do i = uo_lo(1),uo_hi(1)
+            uout(i,uo_lo(2),k,n) = uout(i,uo_lo(2)+1,k,n)
+            uout(i,uo_hi(2),k,n) = uout(i,uo_hi(2)-1,k,n)
+          enddo
+        enddo
+      enddo
+    endif         
+
+    if(ddir == 1) then
+      print*,"before scaling, end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
+      ! print*,"level= ",level,"dx= ",dx
+    else
+      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
+    endif
 
     ! scale fluxes by time and area
-    if(rk == 2) then
+    if(rk == rk_max) then
       do n = 0,nc-2
         ! scale x-fluxes
         do k = fx_lo(3), fx_hi(3)
           do j = fx_lo(2), fx_hi(2)
             do i = fx_lo(1), fx_hi(1)
-              flxx(i,j,k,n) = (flxx(i,j,k,n) + dxdt*fltx(i,j,k,n))*dt*dx(2)
+              flxx(i,j,k,n) = (flxx(i,j,k,n) + dxdt*fltx(i,j,k,n))/(2.0_amrex_real**level)
             enddo
           enddo
         enddo
@@ -453,13 +693,61 @@ module LCPFCT_module
         do k = fy_lo(3), fy_hi(3)
           do j = fy_lo(2), fy_hi(2)
             do i = fy_lo(1), fy_hi(1)
-              flxy(i,j,k,n) = (flxy(i,j,k,n) + dydt*flty(i,j,k,n))*dt*dx(1)
+              flxy(i,j,k,n) = (flxy(i,j,k,n) + dydt*flty(i,j,k,n))/(2.0_amrex_real**level)
             enddo
           enddo
         enddo
 
       enddo
     endif
+    if(ddir == 1) then
+      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
+      print*,"level= ",level,"dx= ",dx
+    else
+      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
+    endif
+
+    ! fname = "uout" // trim(dirchar) // "rk" // trim(rkchar) // "l" // trim(levchar) // ".txt"
+    ! open(unit=111,file=fname)
+    ! ! write(111,1100) time
+    ! ! 1100 format('Time= ',F10.5) 
+    ! write(111,*) "# i j density  x-mom y-mom energy pressure"
+    ! ! print*,"lo(1)= ", phi_lo(1), "hi(1)= ",phi_hi(1)
+    ! do k = lo(3), hi(3)
+    !   do j = uo_lo(2), uo_hi(2)
+    !     do i = uo_lo(1), uo_hi(1)
+    !       ! if(level == 0) then
+    !         ! if(j == lo(2) .or. j == lo(2)-1) then
+    !           WRITE(111,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !           ! 1202 format(I3,2x,I3,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10,2x,F14.10)
+    !         ! endif
+    !         ! if(level > 0) then
+    !         !   WRITE(*,1202) i, j, uout(i,j,k,ro), uout(i,j,k,rou), uout(i,j,k,rov), uout(i,j,k,roE), uout(i,j,k,pre)
+    !         !   1202 format(I5,2x,I5,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8,2x,F14.8)
+    !         ! endif              
+    !       ! else
+    !           ! WRITE(111,1200) i, j, flxx(i,j,k,ro), flxx(i,j,k,rou), flxx(i,j,k,rov), flxx(i,j,k,roE), flxx(i,j,k,pre)
+    !         ! endif
+    !     enddo
+    !   enddo
+    ! enddo
+    ! close(111)
+
+    if(ddir == 1) then
+      if(maxval(abs(uout(:,:,:,rov))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rov)))
+        print*,"non-zero y-momentum at end of flux correction(LCPFCT_2D) for x-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rov)))
+        call exit(123)
+      endif
+    else
+      if(maxval(abs(uout(:,:,:,rou))) > 0.0_amrex_real) then
+        print*,"max(abs(uout))= ", maxval(abs(uout(:,:,:,rou)))
+        print*,"non-zero x-momentum at end of flux correction(LCPFCT_2D) for y-direction shock..aborting"
+        print*,"location of nonzero val is: ",maxloc(abs(uout(:,:,:,rou)))
+        call exit(123)
+      endif
+    endif 
     
     call bl_deallocate(fltx)
     call bl_deallocate(flty)

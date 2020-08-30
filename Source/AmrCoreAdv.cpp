@@ -34,7 +34,8 @@ AmrCoreAdv::AmrCoreAdv ()
     istep.resize(nlevs_max, 0);
     nsubsteps.resize(nlevs_max, 1);
     for (int lev = 1; lev <= max_level; ++lev) {
-	nsubsteps[lev] = MaxRefRatio(lev-1);
+	// nsubsteps[lev] = MaxRefRatio(lev-1);
+        nsubsteps[lev] = 1;
     }
 
     t_new.resize(nlevs_max, 0.0);
@@ -78,11 +79,11 @@ AmrCoreAdv::AmrCoreAdv ()
         bcs[ro].setLo(1,BCType::reflect_even); 
         bcs[ro].setHi(1,BCType::reflect_even);
         // x-momentum BCs
-        bcs[rou].setLo(1,BCType::reflect_odd); 
-        bcs[rou].setHi(1,BCType::reflect_odd);
+        bcs[rou].setLo(1,BCType::reflect_even); 
+        bcs[rou].setHi(1,BCType::reflect_even);
         // y-momentum BCs
-        bcs[rov].setLo(1,BCType::reflect_even);
-        bcs[rov].setHi(1,BCType::reflect_even);
+        bcs[rov].setLo(1,BCType::reflect_odd);
+        bcs[rov].setHi(1,BCType::reflect_odd);
         // Energy BCs
         bcs[roE].setLo(1,BCType::reflect_even);
         bcs[roE].setHi(1,BCType::reflect_even);
@@ -118,7 +119,7 @@ AmrCoreAdv::Evolve ()
 
 	int lev = 0;
 	int iteration = 1;
-	timeStep(lev, cur_time, iteration);
+	timeStep(lev, cur_time, iteration, step);
 
 	cur_time += dt[0];
 
@@ -134,10 +135,10 @@ AmrCoreAdv::Evolve ()
 	    last_plot_file_step = step+1;
 	    WritePlotFile();
 
-        Real time = t_new[0];
+        // Real time = t_new[0];
         int stepnum = istep[0];
         for (int i = 0; i <= finest_level; ++i) {
-            AmrCoreAdv::writetxtfile(i, time, stepnum);
+            AmrCoreAdv::writetxtfile(i, cur_time, stepnum);
         }
 	}
 
@@ -158,10 +159,11 @@ AmrCoreAdv::Evolve ()
 
     if (plot_int > 0 && istep[0] > last_plot_file_step) {
 	   WritePlotFile();
-        Real time = t_new[0];
+        // Real time = t_new[0];
         int stepnum = istep[0];
         for (int i = 0; i <= finest_level; ++i) {
-            AmrCoreAdv::writetxtfile(i, time, stepnum);
+            Print() << "i = " << i << ", stepnum= " << stepnum;
+            AmrCoreAdv::writetxtfile(i, cur_time, stepnum);
         }
     }
 }
@@ -529,9 +531,9 @@ AmrCoreAdv::FillCoarsePatch (int lev, Real time, MultiFab& mf, int icomp, int nc
     Vector<Real> ctime;
     GetData(lev-1, time, cmf, ctime);
 
-    if (cmf.size() != 1) {
-	amrex::Abort("FillCoarsePatch: how did this happen?");
-    }
+ //    if (cmf.size() != 1) {
+	// amrex::Abort("FillCoarsePatch: how did this happen?");
+ //    }
 
     BndryFuncArray bfunc(phifill);
     PhysBCFunct<BndryFuncArray> cphysbc(geom[lev-1],bcs,bfunc);
@@ -576,7 +578,7 @@ AmrCoreAdv::GetData (int lev, Real time, Vector<MultiFab*>& data, Vector<Real>& 
 // advance a level by dt
 // includes a recursive call for finer levels
 void
-AmrCoreAdv::timeStep (int lev, Real time, int iteration)
+AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
 {
     if (regrid_int > 0)  // We may need to regrid
     {
@@ -606,6 +608,9 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration)
 		for (int k = old_finest+1; k <= finest_level; ++k) {
 		    dt[k] = dt[k-1] / MaxRefRatio(k-1);
 		}
+        for (int k = 0; k <= finest_level; ++k){
+            dt[k] = dt[finest_level];
+        }
 	    }
 	}
     }
@@ -632,16 +637,25 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration)
         // recursive call for next-finer level
 	for (int i = 1; i <= nsubsteps[lev+1]; ++i)
 	{
-	    timeStep(lev+1, time+(i-1)*dt[lev+1], i);
+	    timeStep(lev+1, time+(i-1)*dt[lev+1], i, step);
 	}
 
-	if (do_reflux)
+	if (do_reflux && step > 10)
 	{
             // update lev based on coarse-fine flux mismatch
-	    flux_reg[lev+1]->Reflux(phi_new[lev], 1.0, 0, 0, phi_new[lev].nComp(), geom[lev]);
+	    // flux_reg[lev+1]->Reflux(phi_new[lev], 1.0, 0, 0, phi_new[lev].nComp(), geom[lev]);
 	}
 
 	AverageDownTo(lev); // average lev+1 down to lev
+    // AverageDown();
+    if(lev == 0){
+        amrex::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        phi_new[lev].FillBoundary(geom[lev].periodicity());
+    }else{
+        phi_new[lev].FillBoundary();
+        phi_new[lev].FillBoundary(geom[lev].periodicity());
+    }
+
     }
 
 }
@@ -683,7 +697,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 	}
     }
 
-    // State with ghost cells
+    // State with ghost cells (partially convected variables in x, y directions)
     MultiFab Sconvx(grids[lev], dmap[lev], S_new.nComp(), num_grow);
     MultiFab Sconvy(grids[lev], dmap[lev], S_new.nComp(), num_grow);
 
@@ -757,7 +771,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                 }//if(rk==1)
             for(int fct_step = 1 ; fct_step <= 2 ; ++fct_step){
                 // Array4<Real> const& a = stateout.array();
-                Array4<Real> const& b = stateold.array();
+                // Array4<Real> const& b = stateold.array();
 
                 advect(&lev, &time, &rk, &rk_max, &fct_step, &ddir, &nc, 
                     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
@@ -790,8 +804,11 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     }
                     else{
                         S_new.FillBoundary();
+                        S_new.FillBoundary(geom1.periodicity());
                         Sconvx.FillBoundary();
+                        Sconvx.FillBoundary(geom1.periodicity());
                         Sconvy.FillBoundary();
+                        Sconvy.FillBoundary(geom1.periodicity());
                     }
                     Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
                     // Print() << "-------------------------------" << "\n";
@@ -880,8 +897,13 @@ AmrCoreAdv::ComputeDt ()
     dt[0] = dt_0;
     for (int lev = 1; lev <= finest_level; ++lev) {
 	dt[lev] = dt[lev-1] / nsubsteps[lev];
+    // Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
     }
-    Print() << "dt = " << dt[0] <<"\n";
+    
+    for (int lev = 0; lev <= finest_level; ++lev) {
+    dt[lev] = dt[finest_level];
+    Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
+    }
 }
 
 // compute dt from CFL considerations
@@ -1280,8 +1302,14 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
     plotname = amrex::Concatenate(plotname, domdir, 1);
     plotname = plotname + "l";
     plotname = amrex::Concatenate(plotname, lev, 1);
+    std::string filename;
 
-    std::string filename = plotname + ".txt";
+    if (max_level == 0){
+       filename = "ref_" + plotname + ".txt"; 
+    }else{
+        filename = plotname + ".txt";
+    }
+    
 
     std::ofstream ofs(filename, std::ofstream::out);
 
@@ -1316,6 +1344,13 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
                         << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,roE) << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,pre) << "\n";
+                        // Print(ofs).SetPrecision(8) << std::left << std::setw(5) << i << "\t" 
+                        // << std::left << std::setw(5) << j << "\t"
+                        // << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
+                        // << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
+                        // << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
+                        // << std::left << std::setw(12) << a(i,j,k,roE) << "\t" 
+                        // << std::left << std::setw(12) << a(i,j,k,pre) << "\n";
                     }
                 }
                 else {
