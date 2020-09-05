@@ -1,5 +1,5 @@
 max_step  = 10000
-stop_time = 10.0
+stop_time = 0.02
 
 #	COMPONENTS
 # ncomp = 5
@@ -38,7 +38,7 @@ adv.phierr = 1.01  1.1  1.5
 
 # PLOTFILES
 amr.plot_file  = plt    # root name of plot file
-amr.plot_int   = 1000     # number of timesteps between plot files
+amr.plot_int   = 10000     # number of timesteps between plot files
 
 # CHECKPOINT
 amr.chk_file = chk      # root name of checkpoint file
@@ -46,6 +46,13 @@ amr.chk_int  = 10000       # number of timesteps between checkpoint files
 #amr.restart  = chk00060 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
-prob.p2p1   = 10.0
-prob.ro2ro1 = 1.0
-prob.v2v1   = 0.0
+# prob.p2p1   = 10.0
+# prob.ro2ro1 = 1.0
+# prob.v2v1   = 0.0
+
+prob.p2  	  = 1000000.0		#	Left side pressure in Pa (N/m^2)
+prob.p1 	  = 100000.0		#	Right side pressure in Pa (N/m^2)
+prob.v2 	  = 0.0				#	Left side velocity in m/s
+prob.v1 	  = 0.0				#	Right side velocity in m/s
+prob.ro2 	  = 1.0				#	Left side density in kg/m^3
+prob.ro1 	  = 1.0				#	Right side density in kg/m^3

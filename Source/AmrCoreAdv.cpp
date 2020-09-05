@@ -267,16 +267,24 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     //     pp.query("ncomp",ncomp);
     //     pp.query("domdir",domdir);
     // }
-    Real ro2ro1, v2v1, p2p1;
+    Real ro2, ro1, v2, v1, p2, p1;
     {
         ParmParse pp("prob");
-        pp.query("ro2ro1",ro2ro1);
-        pp.query("p2p1",p2p1);
+        // pp.query("ro2ro1",ro2ro1);
+        // pp.query("p2p1",p2p1);
+        pp.query("ro2",ro2);
+        pp.query("ro1",ro1);
+        pp.query("p2",p2);
+        pp.query("p1",p1);
         if ( domdir == 1 ) {
-            pp.query("v2v1",v2v1);
+            // pp.query("v2v1",v2v1);
+            pp.query("v2",v2);
+            pp.query("v1",v1);
         }
         if ( domdir == 2 ) {
-            pp.query("v2v1",v2v1);
+            // pp.query("v2v1",v2v1);
+            pp.query("v2",v2);
+            pp.query("v1",v1);
         }        
     }
 
@@ -309,7 +317,7 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
 
 	initdata(&lev, &cur_time, &nc, &domdir, AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
 		 BL_TO_FORTRAN_3D(state[mfi]), AMREX_ZFILL(dx),
-		 AMREX_ZFILL(prob_lo), AMREX_ZFILL(prob_hi), &ro2ro1, &v2v1, &p2p1);
+		 AMREX_ZFILL(prob_lo), AMREX_ZFILL(prob_hi), &ro2, &ro1, &v2, &v1, &p2, &p1);
     //  Function to print results
         // FArrayBox& fab = state[mfi];
         // Array4<Real> const& a = fab.array();
@@ -686,7 +694,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     int nc = S_new.nComp();
     int rk_max = max_rk;
 
-    MultiFab fluxes[BL_SPACEDIM];
+    MultiFab fluxes[BL_SPACEDIM], flux1[BL_SPACEDIM], uface1[BL_SPACEDIM];
     if (do_reflux)
     {
 	for (int i = 0; i < BL_SPACEDIM; ++i)
@@ -694,6 +702,11 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 	    BoxArray ba = grids[lev];
 	    ba.surroundingNodes(i);
 	    fluxes[i].define(ba, dmap[lev], S_new.nComp(), 0);
+        flux1[i].define(ba, dmap[lev], S_new.nComp(), num_grow);
+        uface1[i].define(ba, dmap[lev], S_new.nComp(), num_grow);
+        // Print() << "dir= " << i << "ulo= " << uface1[i].smallEnd() << "uhi= " << uface1[i].bigEnd();
+        // Print() << "dir= " << i << "flo= " << flux1[i].smallEnd() << "fhi= " << flux1[i].bigEnd();
+        // Print() << "dir= " << i << "fllo= " << fluxes[i].smallEnd() << "flhi= " << fluxes[i].bigEnd();
 	}
     }
 
@@ -721,126 +734,159 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     {
 	   FArrayBox flux[BL_SPACEDIM], uface[BL_SPACEDIM];
 
-	   for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi)
-	   {
-	        const Box& bx = mfi.tilebox();
+       for(int rk = 1 ; rk <= rk_max ; ++rk){
+        for(int fct_step = 1 ; fct_step <= 2 ; ++fct_step){
+            for (MFIter mfi(S_new); mfi.isValid(); ++mfi)
+            {
+                // FArrayBox flux[BL_SPACEDIM], uface[BL_SPACEDIM];
+                // if(rk == 1 && fct_step == 1){
+                const Box& bx = mfi.validbox();
 
-	        FArrayBox& statex   = Sconvx[mfi];
-            FArrayBox& statey   = Sconvy[mfi];
-	        FArrayBox& stateout = S_new[mfi];
-            FArrayBox& stateold = S_old[mfi];
+                FArrayBox& uvel = uface1[0][mfi];
+                FArrayBox& vvel = uface1[1][mfi];
+                FArrayBox& flxx = flux1[0][mfi];
+                FArrayBox& flxy = flux1[1][mfi];
 
-            const int* lo  = bx.loVect();
-            const int* hi  = bx.hiVect();
+                FArrayBox& statex   = Sconvx[mfi];
+                FArrayBox& statey   = Sconvy[mfi];
+                FArrayBox& stateout = S_new[mfi];
+                FArrayBox& stateold = S_old[mfi];
 
-	       // Allocate fabs for fluxes and Godunov velocities.
-	       for (int i = 0; i < BL_SPACEDIM ; i++) {
-		      const Box& bxtmp = amrex::surroundingNodes(bx,i);
-		      flux[i].resize(amrex::grow(bxtmp,ngrow),S_new.nComp()); // need to modify this to reduce memory
-		      uface[i].resize(amrex::grow(bxtmp,ngrow),1);
+                const int* lo  = bx.loVect();
+                const int* hi  = bx.hiVect();
+                Print() << "lbound(bx)= " << amrex::lbound(bx) << "\n";
+                Print() << "ubound(bx)= " << amrex::ubound(bx) << "\n";
 
-                // Print() << "i= " << i << "flux_lim: lo->" << flux[i].smallEnd() << ": hi-> " 
-                //         << flux[i].bigEnd() << "\n";
-                // Print() << "i= " << i << "uface_lim: lo->" << uface[i].smallEnd() << ": hi-> " 
-                //         << uface[i].bigEnd() << "\n";
-	        }
-            // Print() << "lo= " << *bx.loVect(3) << "\n";
-            // compute velocities on faces (prescribed function of space and time)
+                // }
+                // Allocate fabs for fluxes and Godunov velocities.
+                if(fct_step == 1 && rk == 1){
+                for (int i = 0; i < BL_SPACEDIM ; i++) {
+                        const Box& bxtmp = amrex::surroundingNodes(bx,i);
+                        flux[i].resize(amrex::grow(bxtmp,ngrow),S_new.nComp()); // need to modify this to reduce memory
+                        uface[i].resize(amrex::grow(bxtmp,ngrow),1);
+                    }
+                }
 
+                // for (int i = 0; i < BL_SPACEDIM ; i++) {
+                //         Array4<Real> const& uv = uface1[i].array(mfi);
+                //         Array4<Real> const& fl = flux1[i].array(mfi);
+                //         // Array4<Real> const& fl2 = flux[i].array(mfi);
+                //         Print() << "i= " << i << "ulo= " << lbound(uv) << "uhi= " << ubound(uv) << "\n";
+                //         Print() << "i= " << i << "flo= " << lbound(fl) << "fhi= " << ubound(fl) << "\n";
+                //         Print() << "i= " << i << "flo= " << lbound(fl) << "fhi= " << ubound(fl) << "\n";
+                // }
 
-            // compute new state (stateout) and fluxes.
-            for(int rk = 1 ; rk <= rk_max ; ++rk){
-                if(rk == 1){
-                            get_face_velocity(&lev, &ctr_time, 
+                // compute velocities on faces (prescribed function of space and time)
+                if(rk == 1 && fct_step == 1){
+                    if(rk == 1){
+                        // get_face_velocity(&lev, &ctr_time, 
+                        //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
+                        //     AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
+                        //     BL_TO_FORTRAN(uface[1]),
+                        //     BL_TO_FORTRAN(uface[2])),
+                        //     dx, prob_lo, 
+                        //     BL_TO_FORTRAN_3D(stateold), 
+                        //     &nc, &ddir);
+                        get_face_velocity(&lev, &ctr_time, 
                             AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
-                            AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
-                            BL_TO_FORTRAN(uface[1]),
+                            AMREX_D_DECL(BL_TO_FORTRAN(uvel),
+                            BL_TO_FORTRAN(vvel),
                             BL_TO_FORTRAN(uface[2])),
                             dx, prob_lo, 
                             BL_TO_FORTRAN_3D(stateold), 
-                            &nc, &ddir);                
-                }else{
-                            get_face_velocity(&lev, &ctr_time, 
+                            &nc, &ddir);
+                    }else{
+                        // get_face_velocity(&lev, &ctr_time, 
+                        //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
+                        //     AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
+                        //     BL_TO_FORTRAN(uface[1]),
+                        //     BL_TO_FORTRAN(uface[2])),
+                        //     dx, prob_lo, 
+                        //     BL_TO_FORTRAN_3D(stateout), 
+                        //     &nc, &ddir);
+                        get_face_velocity(&lev, &ctr_time, 
                             AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
-                            AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
-                            BL_TO_FORTRAN(uface[1]),
+                            AMREX_D_DECL(BL_TO_FORTRAN(uvel),
+                            BL_TO_FORTRAN(vvel),
                             BL_TO_FORTRAN(uface[2])),
                             dx, prob_lo, 
                             BL_TO_FORTRAN_3D(stateout), 
-                            &nc, &ddir);                 
-                }//if(rk==1)
-            for(int fct_step = 1 ; fct_step <= 2 ; ++fct_step){
-                // Array4<Real> const& a = stateout.array();
-                // Array4<Real> const& b = stateold.array();
+                            &nc, &ddir);
+                    }//if(rk==1)
+                }//if(fct_step==1)
 
+                //advection step (solve the conservation equations & compute new state)
+                // advect(&lev, &time, &rk, &rk_max, &fct_step, &ddir, &nc, 
+                //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
+                //     BL_TO_FORTRAN_3D(stateold),
+                //     BL_TO_FORTRAN_3D(statex),
+                //     BL_TO_FORTRAN_3D(statey),
+                //     BL_TO_FORTRAN_3D(stateout),
+                //     AMREX_D_DECL(BL_TO_FORTRAN_3D(uface[0]),
+                //     BL_TO_FORTRAN_3D(uface[1]),
+                //     BL_TO_FORTRAN_3D(uface[2])),
+                //     AMREX_D_DECL(BL_TO_FORTRAN_3D(flux[0]),
+                //     BL_TO_FORTRAN_3D(flux[1]),
+                //     BL_TO_FORTRAN_3D(flux[2])),
+                //     dx, &dt_lev);
                 advect(&lev, &time, &rk, &rk_max, &fct_step, &ddir, &nc, 
                     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                     BL_TO_FORTRAN_3D(stateold),
-		            BL_TO_FORTRAN_3D(statex),
-		            BL_TO_FORTRAN_3D(statey),
+                    BL_TO_FORTRAN_3D(statex),
+                    BL_TO_FORTRAN_3D(statey),
                     BL_TO_FORTRAN_3D(stateout),
-		            AMREX_D_DECL(BL_TO_FORTRAN_3D(uface[0]),
-			        BL_TO_FORTRAN_3D(uface[1]),
-			        BL_TO_FORTRAN_3D(uface[2])),
-		            AMREX_D_DECL(BL_TO_FORTRAN_3D(flux[0]),
-			        BL_TO_FORTRAN_3D(flux[1]),
-			        BL_TO_FORTRAN_3D(flux[2])),
-		            dx, &dt_lev);
-                    // printout(bx, a);
-                    // printout(bx,b); 
-                    Array4<Real> const& a = stateout.array();
-                
-                    if (lev == 0){
-                        // printout(bx, a);
-                        amrex::FillDomainBoundary(S_new,geom1,bcs);
-                        S_new.FillBoundary(geom1.periodicity());
-                        amrex::FillDomainBoundary(Sconvx,geom1,bcs);
-                        Sconvx.FillBoundary(geom1.periodicity());
-                        amrex::FillDomainBoundary(Sconvy,geom1,bcs);
-                        Sconvy.FillBoundary(geom1.periodicity());
-                        // Print() << "Boundaries filled ------------------------ \n";
-                        // printout(bx, a);
-                        // FillPatch(lev, time, S_new, 0, S_new.nComp());
+                    AMREX_D_DECL(BL_TO_FORTRAN_3D(uvel),
+                    BL_TO_FORTRAN_3D(vvel),
+                    BL_TO_FORTRAN_3D(uface[2])),
+                    AMREX_D_DECL(BL_TO_FORTRAN_3D(flxx),
+                    BL_TO_FORTRAN_3D(flxy),
+                    BL_TO_FORTRAN_3D(flux[2])),
+                    dx, &dt_lev);
+                if(do_reflux && rk == rk_max && fct_step == 2){
+                    for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi){
+                        for(int i = 0; i < BL_SPACEDIM ; i++){
+                            fluxes[i][mfi].copy<RunOn::Host>(flux1[i][mfi],mfi.nodaltilebox(i));
+                        }
                     }
-                    else{
-                        S_new.FillBoundary();
-                        S_new.FillBoundary(geom1.periodicity());
-                        Sconvx.FillBoundary();
-                        Sconvx.FillBoundary(geom1.periodicity());
-                        Sconvy.FillBoundary();
-                        Sconvy.FillBoundary(geom1.periodicity());
-                    }
-                    Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
-                    // Print() << "-------------------------------" << "\n";
-                    // Array4<Real> const& b = stateout.array();
-                    // printout(bx, b);
-                    // else{
-                    //     FillCoarsePatch(lev, time, S_new, 0, S_new.nComp());
-                    // }
-                }//for(fct_step)           
-            }//for(rk)
-
-        if (lev == 0){
+                }
+            }//for MFIter(mfi)
+            if (lev == 0){
+                    S_new.FillBoundary();
                     amrex::FillDomainBoundary(S_new,geom1,bcs);
                     S_new.FillBoundary(geom1.periodicity());
-        }else{
-            S_new.FillBoundary();
-        }
-        // if (lev == 0){
-        //         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
-        // }
+                    Sconvx.FillBoundary();
+                    amrex::FillDomainBoundary(Sconvx,geom1,bcs);
+                    Sconvx.FillBoundary(geom1.periodicity());
+                    Sconvy.FillBoundary();
+                    amrex::FillDomainBoundary(Sconvy,geom1,bcs);
+                    Sconvy.FillBoundary(geom1.periodicity());
+            }
+            else{
+                    S_new.FillBoundary();
+                    S_new.FillBoundary(geom1.periodicity());
+                    amrex::FillDomainBoundary(S_new,geom1,bcs);
+                    Sconvx.FillBoundary();
+                    Sconvx.FillBoundary(geom1.periodicity());
+                    amrex::FillDomainBoundary(Sconvx,geom1,bcs);
+                    Sconvy.FillBoundary();
+                    Sconvy.FillBoundary(geom1.periodicity());
+                    amrex::FillDomainBoundary(Sconvy,geom1,bcs);
+            }
+        Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+        }//for(fct_step)
+    }//for(rk)
 
+    if (lev == 0){
+        S_new.FillBoundary();
+        amrex::FillDomainBoundary(S_new,geom1,bcs);
+        S_new.FillBoundary(geom1.periodicity());
+    }
+    else{
+        S_new.FillBoundary();
+        S_new.FillBoundary(geom1.periodicity());
+        amrex::FillDomainBoundary(S_new,geom1,bcs);
+    }    
 
-        // else{
-        //         FillCoarsePatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
-        // }
-	    if (do_reflux) {
-		  for (int i = 0; i < BL_SPACEDIM ; i++) {
-		      fluxes[i][mfi].copy<RunOn::Host>(flux[i],mfi.nodaltilebox(i));
-                // Print() << "i= " << i << ", reached end of advance()" << "\n";
-		  }
-	    }
-	   }//for(MFIter mfi)
     }
 
     // increment or decrement the flux registers by area and time-weighted fluxes
@@ -902,7 +948,7 @@ AmrCoreAdv::ComputeDt ()
     
     for (int lev = 0; lev <= finest_level; ++lev) {
     dt[lev] = dt[finest_level];
-    Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
+    // Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
     }
 }
 
@@ -937,7 +983,7 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
             // const Box& validbox  = mfi.validbox();
 		   const Box& bx = mfi.nodaltilebox(i);
 		   uface[i].resize(bx,1);
-           Print() << "dir= " << i << ", bx= " << bx << "dx = " << geom[lev].CellSize(0) << "\n";
+           // Print() << "dir= " << i << ", bx= " << bx << "dx = " << geom[lev].CellSize(0) << "\n";
 	       }
 
             const Box& box = mfi.tilebox();
@@ -951,7 +997,7 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
 			         dx, prob_lo, &ddir, &umax, &nc,
                      BL_TO_FORTRAN_3D(S_new[mfi]), 
                      AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi));
-            Print() << "umax= " << umax << "\n";
+            // Print() << "umax= " << umax << "\n";
             if(ddir == 1){
                 dt_calc = geom[lev].CellSize(0)/umax;
             }else{

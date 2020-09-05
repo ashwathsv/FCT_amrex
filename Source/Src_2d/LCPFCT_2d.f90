@@ -97,11 +97,13 @@ module LCPFCT_module
         &                 uold, u0_lo, u0_hi,       &
         &                 flxx, fx_lo, fx_hi,       &
         &                 flxy, fy_lo, fy_hi  )
+    ! print*,"rk= ",rk,",dx(1)= ",dx(1),", from LCPFCT2D, fx_lo= ",fx_lo,", fx_hi= ",fx_hi
     else
       call compute_con_flux(  level, ddir, nc, lo, hi,  & 
         &                 uout, uo_lo, uo_hi,       &
         &                 flxx, fx_lo, fx_hi,       &
         &                 flxy, fy_lo, fy_hi  )
+      ! print*,"rk(n1)= ",rk,",dx(1)= ",dx(1),", from LCPFCT2D, fx_lo= ",fx_lo,", fx_hi= ",fx_hi
     endif
     ! Predictor step of FCT
     ! compute convected x and y values of the conserved quantities
@@ -670,12 +672,12 @@ module LCPFCT_module
       enddo
     endif         
 
-    if(ddir == 1) then
-      print*,"before scaling, end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
+    ! if(ddir == 1) then
+      ! print*,"before scaling, end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
       ! print*,"level= ",level,"dx= ",dx
-    else
-      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
-    endif
+    ! else
+      ! print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
+    ! endif
 
     ! scale fluxes by time and area
     if(rk == rk_max) then
@@ -700,12 +702,12 @@ module LCPFCT_module
 
       enddo
     endif
-    if(ddir == 1) then
-      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
-      print*,"level= ",level,"dx= ",dx
-    else
-      print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
-    endif
+    ! if(ddir == 1) then
+    !   print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxy))= ",maxval(abs(flxy(:,:,:,rov)))
+    !   print*,"level= ",level,"dx= ",dx
+    ! else
+    !   print*,"end of rk= ",rk,", lev= ,",level,", max(abs(flxx))= ",maxval(abs(flxx(:,:,:,rou)))
+    ! endif
 
     ! fname = "uout" // trim(dirchar) // "rk" // trim(rkchar) // "l" // trim(levchar) // ".txt"
     ! open(unit=111,file=fname)

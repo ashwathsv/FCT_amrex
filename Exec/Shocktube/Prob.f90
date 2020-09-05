@@ -1,13 +1,13 @@
 
 subroutine initdata(level, time, nc, domdir, lo, hi, &
      phi, phi_lo, phi_hi, &
-     dx, prob_lo, prob_hi, ro2ro1, v2v1, p2p1) bind(C, name="initdata")
+     dx, prob_lo, prob_hi, ro2, ro1, v2, v1, p2, p1) bind(C, name="initdata")
 
   use amrex_fort_module, only : amrex_spacedim, amrex_real
 
   implicit none
   integer, intent(in) :: level, nc, domdir, lo(3), hi(3), phi_lo(3), phi_hi(3)
-  real(amrex_real), intent(in) :: time, ro2ro1, v2v1, p2p1
+  real(amrex_real), intent(in) :: time, ro2, ro1, v2, v1, p2, p1
   real(amrex_real), intent(inout) :: phi(phi_lo(1):phi_hi(1), &
        &                                 phi_lo(2):phi_hi(2), &
        &                                 phi_lo(3):phi_hi(3), &
@@ -15,7 +15,7 @@ subroutine initdata(level, time, nc, domdir, lo, hi, &
   real(amrex_real), intent(in) :: dx(3), prob_lo(3), prob_hi(3)
 
   integer          :: i,j,k
-  real(amrex_real) :: x,y,z,r2,mid
+  real(amrex_real) :: x,y,z,mid
   integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
   real(amrex_real), parameter :: gamma = 1.4
   real(amrex_real), parameter :: c1 = 1.0_amrex_real/(gamma-1)
@@ -32,13 +32,19 @@ subroutine initdata(level, time, nc, domdir, lo, hi, &
               mid = 0.5_amrex_real*(prob_lo(1) + prob_hi(1))
               phi(i,j,k,rov) = 0.0_amrex_real
               if(x < mid) then
-                phi(i,j,k,ro)  = ro2ro1
-                phi(i,j,k,rou) = v2v1 
-                phi(i,j,k,pre) = p2p1
+                ! phi(i,j,k,ro)  = ro2ro1
+                ! phi(i,j,k,rou) = v2v1 
+                ! phi(i,j,k,pre) = p2p1
+                phi(i,j,k,ro)  = ro2
+                phi(i,j,k,rou) = v2 
+                phi(i,j,k,pre) = p2
               else
-                phi(i,j,k,ro)  = 1.0_amrex_real
-                phi(i,j,k,rou) = 0.0_amrex_real
-                phi(i,j,k,pre) = 1.0_amrex_real
+                ! phi(i,j,k,ro)  = 1.0_amrex_real
+                ! phi(i,j,k,rou) = 0.0_amrex_real
+                ! phi(i,j,k,pre) = 1.0_amrex_real
+                phi(i,j,k,ro)  = ro1
+                phi(i,j,k,rou) = v1
+                phi(i,j,k,pre) = p1
               endif
                 phi(i,j,k,roE) = phi(i,j,k,pre)*c1 + &
                 &                0.5_amrex_real*((phi(i,j,k,rou)**2)/phi(i,j,k,ro))                
@@ -46,13 +52,19 @@ subroutine initdata(level, time, nc, domdir, lo, hi, &
               mid = 0.5_amrex_real*(prob_lo(2) + prob_hi(2))
               phi(i,j,k,rou) = 0.0_amrex_real
               if(y < mid) then
-                phi(i,j,k,ro)  = ro2ro1
-                phi(i,j,k,rov) = v2v1
-                phi(i,j,k,pre) = p2p1
+                ! phi(i,j,k,ro)  = ro2ro1
+                ! phi(i,j,k,rov) = v2v1
+                ! phi(i,j,k,pre) = p2p1
+                phi(i,j,k,ro)  = ro2
+                phi(i,j,k,rov) = v2
+                phi(i,j,k,pre) = p2
               else
-                phi(i,j,k,ro)  = 1.0_amrex_real
-                phi(i,j,k,rov) = 0.0_amrex_real
-                phi(i,j,k,pre) = 1.0_amrex_real                
+                ! phi(i,j,k,ro)  = 1.0_amrex_real
+                ! phi(i,j,k,rov) = 0.0_amrex_real
+                ! phi(i,j,k,pre) = 1.0_amrex_real 
+                phi(i,j,k,ro)  = ro1
+                phi(i,j,k,rov) = v1
+                phi(i,j,k,pre) = p1               
               endif
                 phi(i,j,k,roE) = phi(i,j,k,pre)*c1 + &
                 &                0.5_amrex_real*((phi(i,j,k,rou)**2)/phi(i,j,k,ro))  

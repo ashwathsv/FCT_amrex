@@ -36,8 +36,8 @@ subroutine compute_con_flux(level, ddir, nc, lo, hi,  &
 
     flxx(:,:,:,pre) = 0.0_amrex_real
     flxy(:,:,:,pre) = 0.0_amrex_real
-    print*,"fx_lo= ",fx_lo,"fx_hi= ",fx_hi
-    print*,"fy_lo= ",fy_lo,"fy_hi= ",fy_hi
+    ! print*,"level= ",level,", from compute_con_flux, fx_lo= ",fx_lo,"fx_hi= ",fx_hi
+    ! print*,"level= ",level,", from compute_con_flux, fy_lo= ",fy_lo,"fy_hi= ",fy_hi
 
 
     ! do k = fx_lo(3), fx_hi(3)
@@ -120,7 +120,7 @@ subroutine compute_con_flux(level, ddir, nc, lo, hi,  &
     ! endif
 
     if(ddir == 1) then
-      print*,"max(abs(flxy))= ", maxval(abs(flxy(:,:,:,rov)))
+      ! print*,"max(abs(flxy))= ", maxval(abs(flxy(:,:,:,rov)))
       if(maxval(abs(flxy(:,:,:,rov))) > 0.0_amrex_real) then
         print*,"non-zero y-momentum convective flux for x-direction shock..aborting"
         id = maxloc(abs(flxy(:,:,:,rov)))
@@ -131,7 +131,7 @@ subroutine compute_con_flux(level, ddir, nc, lo, hi,  &
         call exit(123)
       endif
     else
-      print*,"max(abs(flxx))= ", maxval(abs(flxx(:,:,:,rou)))
+      ! print*,"max(abs(flxx))= ", maxval(abs(flxx(:,:,:,rou)))
       if(maxval(abs(flxx(:,:,:,rou))) > 0.0_amrex_real) then
         print*,"non-zero x-momentum convective flux for y-direction shock..aborting"
         print*,"location of nonzero val is: ",maxloc(abs(flxx(:,:,:,rou)))
@@ -277,14 +277,14 @@ subroutine compute_diff_flux( level, ddir, nc, dtdx, dtdy, lo, hi,  &
   enddo
 
     if(ddir == 1) then
-      print*,"max(abs(fldy))= ", maxval(abs(fldy(:,:,:,rov)))
+      ! print*,"max(abs(fldy))= ", maxval(abs(fldy(:,:,:,rov)))
       if(maxval(abs(fldy(:,:,:,rov))) > 0.0_amrex_real) then
         print*,"non-zero y-momentum diffusive flux for x-direction shock..aborting"
         print*,"location of nonzero val is: ",maxloc(abs(fldy(:,:,:,rov)))
         call exit(123)
       endif
     else
-      print*,"max(abs(fldx))= ", maxval(abs(fldx(:,:,:,rou)))
+      ! print*,"max(abs(fldx))= ", maxval(abs(fldx(:,:,:,rou)))
       if(maxval(abs(fldx(:,:,:,rou))) > 0.0_amrex_real) then
         print*,"non-zero x-momentum diffusive flux for y-direction shock..aborting"
         print*,"location of nonzero val is: ",maxloc(abs(fldx(:,:,:,rov)))
@@ -424,21 +424,21 @@ endif
   enddo
 ! endif
 
-    if(ddir == 1) then
-      print*,"max(abs(flsy))= ", maxval(abs(flsy(:,:,:,rov)))
+    ! if(ddir == 1) then
+      ! print*,"max(abs(flsy))= ", maxval(abs(flsy(:,:,:,rov)))
       ! if(maxval(abs(flsy(:,:,:,rov))) > 0.0_amrex_real) then
       !   print*,"non-zero y-momentum source flux for x-direction shock..aborting"
       !   print*,"location of nonzero val is: ",maxloc(abs(flsy(:,:,:,rov)))
       !   call exit(123)
       ! endif
-    else
-      print*,"max(abs(flsx))= ", maxval(abs(flsx(:,:,:,rou)))
+    ! else
+      ! print*,"max(abs(flsx))= ", maxval(abs(flsx(:,:,:,rou)))
       ! if(maxval(abs(flsx(:,:,:,rov))) > 0.0_amrex_real) then
       !   print*,"non-zero x-momentum source flux for y-direction shock..aborting"
       !   print*,"location of nonzero val is: ",maxloc(abs(flsx(:,:,:,rov)))
       !   call exit(123)
       ! endif
-    endif
+    ! endif
 end subroutine compute_source_flux
 !------------------------------------------------------------------------------------------
 ! Subroutine to compute anti-diffusive fluxes 
@@ -488,6 +488,8 @@ subroutine compute_ad_flux( level, ddir, time, nc, dtdx, dtdy, lo, hi,  &
 
   write(dirchar,fmt='(i2.2)') ddir
   ! first calculate x-part of anti-diffusive fluxes (these are at faces normal to x eg. (i+1/2,j) )
+  ! print*,"ftx_lo= ",ftx_lo, ", ucx_lo = ",ucx_lo
+  ! print*,"ftx_hi= ",ftx_hi, ", ucx_hi= ",ucx_hi
   do n = 0,nc-2
     do k = ftx_lo(3), ftx_hi(3)
       do j = ftx_lo(2)+1, ftx_hi(2)-1
