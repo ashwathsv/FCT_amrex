@@ -126,6 +126,8 @@ private:
     void WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int stepnum, const Geometry& geom);
 
     void writetxtfile (int lev, Real cur_time, int step_num);
+
+    Real get_gradp(int lev, Box const& validbox, Array4<Real const> const& a);
     ////////////////
     // private data members
 

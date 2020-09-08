@@ -16,7 +16,7 @@ include $(Bpack)
 INCLUDE_LOCATIONS += $(Blocs)
 VPATH_LOCATIONS   += $(Blocs)
 
-Pdirs 	:= Base Boundary AmrCore
+Pdirs 	:= Base Boundary AmrCore F_Interfaces/Base F_Interfaces/AmrCore 
 ifeq ($(USE_SENSEI_INSITU),TRUE)
 	Pdirs += Amr Extern/SENSEI
 endif

@@ -1,4 +1,3 @@
-
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_MultiFabUtil.H>
@@ -22,6 +21,7 @@ using namespace amrex;
 //             - initializes BCRec boundary condition object
 AmrCoreAdv::AmrCoreAdv ()
 {
+    // Print(ParallelDescriptor::MyProc()) << "rank= " << ParallelDescriptor::MyProc() << "entered constructor of AmrCoreAdv" << "\n";
     ReadParameters();
 
     // Geometry on all levels has been defined already.
@@ -172,16 +172,22 @@ AmrCoreAdv::Evolve ()
 void
 AmrCoreAdv::InitData ()
 {
+    int myproc = ParallelDescriptor::MyProc();
     if (restart_chkfile == "") {
         // start simulation from the beginning
         const Real time = 0.0;
+        // Print(myproc) << "rank= " << myproc << "entering InitFromScratch()" << "\n";
         InitFromScratch(time);
+        // Print(myproc) << "rank= " << myproc << "reached end of InitFromScratch()" << "\n";
+        ParallelDescriptor::Barrier();
         AverageDown();
+        // Print(myproc) << "rank= " << myproc << "reached end of averagedown()" << "\n";
 
         if (chk_int > 0) {
             WriteCheckpointFile();
         }
-
+        // Print(myproc) << "rank= " << myproc << "reached end of checkpoint()" << "\n";
+        // ParallelDescriptor::Barrier();
     }
     else {
         // restart from a checkpoint
@@ -192,6 +198,8 @@ AmrCoreAdv::InitData ()
         WritePlotFile();
         // writetxtfile();
     }
+    Print(myproc) << "rank= " << myproc << "reached end of initdata()" << "\n";
+    ParallelDescriptor::Barrier();
 }
 
 // Make a new level using provided BoxArray and DistributionMapping and
@@ -201,6 +209,8 @@ void
 AmrCoreAdv::MakeNewLevelFromCoarse (int lev, Real time, const BoxArray& ba,
 				    const DistributionMapping& dm)
 {
+    int myproc = ParallelDescriptor::MyProc();
+    Print(myproc) << "rank= " << myproc << "entering MakeNewLevelFromCoarse()" << "\n";
     const int ncomp = phi_new[lev-1].nComp();
     const int nghost = phi_new[lev-1].nGrow();
 
@@ -224,6 +234,8 @@ void
 AmrCoreAdv::RemakeLevel (int lev, Real time, const BoxArray& ba,
 			 const DistributionMapping& dm)
 {
+    int myproc = ParallelDescriptor::MyProc();
+    Print(myproc) << "rank= " << myproc << "entering RemakeLevel()" << "\n";
     const int ncomp = phi_new[lev].nComp();
     const int nghost = phi_new[lev].nGrow();
 
@@ -248,6 +260,8 @@ AmrCoreAdv::RemakeLevel (int lev, Real time, const BoxArray& ba,
 void
 AmrCoreAdv::ClearLevel (int lev)
 {
+    int myproc = ParallelDescriptor::MyProc();
+    Print(myproc) << "rank= " << myproc << "entering ClearLevel()" << "\n";
     phi_new[lev].clear();
     phi_old[lev].clear();
     flux_reg[lev].reset(nullptr);
@@ -259,14 +273,8 @@ AmrCoreAdv::ClearLevel (int lev)
 void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba,
 					  const DistributionMapping& dm)
 {
-    // int ncomp = 5;
-    // const int nghost = 4;
-    // int domdir = 1;
-    // {    
-    //     ParmParse pp;
-    //     pp.query("ncomp",ncomp);
-    //     pp.query("domdir",domdir);
-    // }
+    int myproc = ParallelDescriptor::MyProc();
+    // Print(myproc) << "rank= " << myproc << ", entered MakeNewLevelFromScratch" << "\n";
     Real ro2, ro1, v2, v1, p2, p1;
     {
         ParmParse pp("prob");
@@ -312,18 +320,26 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         const Box& box = mfi.validbox();
         const int* lo  = box.loVect();
         const int* hi  = box.hiVect();
+        
+        // Print(ParallelDescriptor::MyProc()) << "rank= " << ParallelDescriptor::MyProc() << ", lev= " << lev << 
+        // ", lo= " << box.smallEnd() 
+        // << ", hi= " << box.bigEnd() << "\n";
         // FArrayBox& fab = state[mfi];
         // Array4<Real> const& a = fab.array();
 
 	initdata(&lev, &cur_time, &nc, &domdir, AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
 		 BL_TO_FORTRAN_3D(state[mfi]), AMREX_ZFILL(dx),
 		 AMREX_ZFILL(prob_lo), AMREX_ZFILL(prob_hi), &ro2, &ro1, &v2, &v1, &p2, &p1);
+    // ParallelDescriptor::Barrier();
+    // Print(ParallelDescriptor::MyProc()) << "rank= " << myproc << "initdata works" << "\n";
     //  Function to print results
         // FArrayBox& fab = state[mfi];
         // Array4<Real> const& a = fab.array();
         // printout(box, a);
 
     }
+    // ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", lev= " << lev << "reached end of MFIter initdata" << "\n";
     // if (not geom.isAllPeriodic()) {
     // GpuBndryFuncFab<MyExtBCFill> bf(MyExtBCFill{});
     // PhysBCFunct<GpuBndryFuncFab<MyExtBCFill> > physbcf(geom, bc, bf);
@@ -333,13 +349,17 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     if (lev == 0) {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
         amrex::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
         // amrex::FillDomainBoundary (phi_new[lev], geom[lev], bcs);
     }
     else {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
         phi_new[lev].FillBoundary();
+        phi_new[lev].FillBoundary(geom[lev].periodicity());
+        amrex::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
     }
+    // ParallelDescriptor::Barrier();
 
     for (MFIter mfi(state); mfi.isValid(); ++mfi)
     {
@@ -352,6 +372,7 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         // printout(box, a);
 
     }
+    // ParallelDescriptor::Barrier();
 
     MultiFab& phi = phi_new[lev];
     for (MFIter mfi(phi); mfi.isValid(); ++mfi)
@@ -365,6 +386,9 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         WriteTxtFileInit(lev, box, arr, istep[lev], geom[lev]);
 
     }
+    // ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", reached end of MakeNewLevelFromScratch" << "\n";
+    ParallelDescriptor::Barrier();
 }
 
 // tag all cells for refinement
@@ -372,6 +396,8 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
 void
 AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 {
+    int myproc = ParallelDescriptor::MyProc();
+    // Print(myproc) << "rank= " << myproc << ", lev= " << lev << ", entering ErrorEst()" << "\n";
     static bool first = true;
     static Vector<Real> phierr;
 
@@ -401,12 +427,25 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 
     const MultiFab& state = phi_new[lev];
     int nc = phi_new[lev].nComp();
+    Real maxgradp = 0.0, gradptemp;
+    int glo, ghi;
 
 #ifdef _OPENMP
 #pragma omp parallel
 #endif
     {
         Vector<int>  itags;
+    for(MFIter mfi(state, true); mfi.isValid(); ++mfi){
+        const Box& tmpbox  = mfi.validbox();
+        Array4<Real const> const& a = state[mfi].const_array();
+        gradptemp = get_gradp(lev, tmpbox, a);
+        if(fabs(gradptemp) > fabs(maxgradp)){
+            maxgradp = gradptemp;
+        }
+    }
+    // Get global maximum of pressure gradient (use this as criterion for refinement)
+    ParallelDescriptor::ReduceRealMax(maxgradp);
+    // Print(myproc) << "rank= " << myproc << "maxgradp= " << maxgradp << "\n";
 
 	for (MFIter mfi(state,true); mfi.isValid(); ++mfi)
 	{
@@ -425,12 +464,17 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 	    const int*  tlo     = validbox.loVect();
 	    const int*  thi     = validbox.hiVect();
 
+        //Function to calculate the maximum pressure gradient and establish refinement criterion
+        // Print(ParallelDescriptor::MyProc()) << "rank= " << ParallelDescriptor::MyProc()
+        // <<  ",level= " << lev << ", maxgradp = " << maxgradp << "\n";
+
             // tag cells for refinement
 	    state_error(tptr,  AMREX_ARLIM_3D(tlo), AMREX_ARLIM_3D(thi),
 			BL_TO_FORTRAN_3D(state[mfi]),
 			&tagval, &clearval,
 			AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
-			AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &phierr[lev], &nc, &domdir);
+			AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &phierr[lev], &nc, &domdir, &maxgradp);
+
 	    //
 	    // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags
@@ -438,6 +482,7 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 	    tagfab.tags_and_untags(itags, validbox);
 	}
     }
+    ParallelDescriptor::Barrier();
 }
 
 // read in some parameters from inputs file
@@ -475,6 +520,8 @@ AmrCoreAdv::ReadParameters ()
 void
 AmrCoreAdv::AverageDown ()
 {
+    int myproc = ParallelDescriptor::MyProc();
+    // Print(myproc) << "rank= " << myproc << "entering AverageDown()" << "\n";
     for (int lev = finest_level-1; lev >= 0; --lev)
     {
 	amrex::average_down(phi_new[lev+1], phi_new[lev],
@@ -657,21 +704,25 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
 	AverageDownTo(lev); // average lev+1 down to lev
     // AverageDown();
     if(lev == 0){
+        phi_new[lev].FillBoundary();
         amrex::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
         phi_new[lev].FillBoundary(geom[lev].periodicity());
     }else{
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
+        amrex::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
     }
 
     }
 
+    ParallelDescriptor::Barrier();
 }
 
 // advance a single level for a single time step, updates flux registers
 void
 AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 {
+    int myproc = ParallelDescriptor::MyProc();
     constexpr int num_grow = 4;
     int ngrow = num_grow;
 
@@ -714,6 +765,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     MultiFab Sconvx(grids[lev], dmap[lev], S_new.nComp(), num_grow);
     MultiFab Sconvy(grids[lev], dmap[lev], S_new.nComp(), num_grow);
 
+    ParallelDescriptor::Barrier();
     if(lev == 0){
         FillPatch(lev, time, Sconvx, 0, Sconvx.nComp());
         FillPatch(lev, time, Sconvy, 0, Sconvy.nComp());
@@ -736,11 +788,9 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
        for(int rk = 1 ; rk <= rk_max ; ++rk){
         for(int fct_step = 1 ; fct_step <= 2 ; ++fct_step){
-            for (MFIter mfi(S_new); mfi.isValid(); ++mfi)
+            for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi)
             {
-                // FArrayBox flux[BL_SPACEDIM], uface[BL_SPACEDIM];
-                // if(rk == 1 && fct_step == 1){
-                const Box& bx = mfi.validbox();
+                const Box& bx = mfi.tilebox();
 
                 FArrayBox& uvel = uface1[0][mfi];
                 FArrayBox& vvel = uface1[1][mfi];
@@ -754,8 +804,8 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
                 const int* lo  = bx.loVect();
                 const int* hi  = bx.hiVect();
-                Print() << "lbound(bx)= " << amrex::lbound(bx) << "\n";
-                Print() << "ubound(bx)= " << amrex::ubound(bx) << "\n";
+                // Print() << "lbound(bx)= " << amrex::lbound(bx) << "\n";
+                // Print() << "ubound(bx)= " << amrex::ubound(bx) << "\n";
 
                 // }
                 // Allocate fabs for fluxes and Godunov velocities.
@@ -767,26 +817,9 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     }
                 }
 
-                // for (int i = 0; i < BL_SPACEDIM ; i++) {
-                //         Array4<Real> const& uv = uface1[i].array(mfi);
-                //         Array4<Real> const& fl = flux1[i].array(mfi);
-                //         // Array4<Real> const& fl2 = flux[i].array(mfi);
-                //         Print() << "i= " << i << "ulo= " << lbound(uv) << "uhi= " << ubound(uv) << "\n";
-                //         Print() << "i= " << i << "flo= " << lbound(fl) << "fhi= " << ubound(fl) << "\n";
-                //         Print() << "i= " << i << "flo= " << lbound(fl) << "fhi= " << ubound(fl) << "\n";
-                // }
-
                 // compute velocities on faces (prescribed function of space and time)
                 if(rk == 1 && fct_step == 1){
                     if(rk == 1){
-                        // get_face_velocity(&lev, &ctr_time, 
-                        //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
-                        //     AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
-                        //     BL_TO_FORTRAN(uface[1]),
-                        //     BL_TO_FORTRAN(uface[2])),
-                        //     dx, prob_lo, 
-                        //     BL_TO_FORTRAN_3D(stateold), 
-                        //     &nc, &ddir);
                         get_face_velocity(&lev, &ctr_time, 
                             AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                             AMREX_D_DECL(BL_TO_FORTRAN(uvel),
@@ -796,14 +829,6 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                             BL_TO_FORTRAN_3D(stateold), 
                             &nc, &ddir);
                     }else{
-                        // get_face_velocity(&lev, &ctr_time, 
-                        //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
-                        //     AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
-                        //     BL_TO_FORTRAN(uface[1]),
-                        //     BL_TO_FORTRAN(uface[2])),
-                        //     dx, prob_lo, 
-                        //     BL_TO_FORTRAN_3D(stateout), 
-                        //     &nc, &ddir);
                         get_face_velocity(&lev, &ctr_time, 
                             AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                             AMREX_D_DECL(BL_TO_FORTRAN(uvel),
@@ -816,19 +841,6 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                 }//if(fct_step==1)
 
                 //advection step (solve the conservation equations & compute new state)
-                // advect(&lev, &time, &rk, &rk_max, &fct_step, &ddir, &nc, 
-                //     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
-                //     BL_TO_FORTRAN_3D(stateold),
-                //     BL_TO_FORTRAN_3D(statex),
-                //     BL_TO_FORTRAN_3D(statey),
-                //     BL_TO_FORTRAN_3D(stateout),
-                //     AMREX_D_DECL(BL_TO_FORTRAN_3D(uface[0]),
-                //     BL_TO_FORTRAN_3D(uface[1]),
-                //     BL_TO_FORTRAN_3D(uface[2])),
-                //     AMREX_D_DECL(BL_TO_FORTRAN_3D(flux[0]),
-                //     BL_TO_FORTRAN_3D(flux[1]),
-                //     BL_TO_FORTRAN_3D(flux[2])),
-                //     dx, &dt_lev);
                 advect(&lev, &time, &rk, &rk_max, &fct_step, &ddir, &nc, 
                     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                     BL_TO_FORTRAN_3D(stateold),
@@ -850,6 +862,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     }
                 }
             }//for MFIter(mfi)
+            ParallelDescriptor::Barrier();
             if (lev == 0){
                     S_new.FillBoundary();
                     amrex::FillDomainBoundary(S_new,geom1,bcs);
@@ -872,7 +885,8 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     Sconvy.FillBoundary(geom1.periodicity());
                     amrex::FillDomainBoundary(Sconvy,geom1,bcs);
             }
-        Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+        Print(myproc) << "rank= " << myproc << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+        ParallelDescriptor::Barrier();
         }//for(fct_step)
     }//for(rk)
 
@@ -888,7 +902,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     }    
 
     }
-
+    ParallelDescriptor::Barrier();
     // increment or decrement the flux registers by area and time-weighted fluxes
     // Note that the fluxes have already been scaled by dt and area
     // In this example we are solving phi_t = -div(+F)
@@ -911,12 +925,14 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 	    }
 	}
     }
+    ParallelDescriptor::Barrier();
 }
 
 // a wrapper for EstTimeStep
 void
 AmrCoreAdv::ComputeDt ()
 {
+    int myproc = ParallelDescriptor::MyProc();
     Vector<Real> dt_tmp(finest_level+1);
 
     for (int lev = 0; lev <= finest_level; ++lev)
@@ -948,7 +964,7 @@ AmrCoreAdv::ComputeDt ()
     
     for (int lev = 0; lev <= finest_level; ++lev) {
     dt[lev] = dt[finest_level];
-    // Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
+    // Print(myproc) << "rank= " << myproc << ", lev = " << lev << ", dt = " << dt[lev] <<"\n";
     }
 }
 
@@ -957,6 +973,8 @@ Real
 AmrCoreAdv::EstTimeStep (int lev, bool local)
 {
     BL_PROFILE("AmrCoreAdv::EstTimeStep()");
+
+    int myproc = ParallelDescriptor::MyProc();
 
     Real dt_est = std::numeric_limits<Real>::max();
 
@@ -1014,7 +1032,8 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
 
     dt_est *= cfl;
 
-    Print() << "dt_est = " << dt_est << "\n";
+    // ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", dt_est = " << dt_est << "\n";
 
     return dt_est;
 }
@@ -1301,14 +1320,17 @@ AmrCoreAdv::WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int
    plotname = amrex::Concatenate(plotname, domdir, 1);
    plotname = plotname + "l";
    plotname = amrex::Concatenate(plotname, lev, 1);
+   plotname = plotname + "r";
+   int myproc = ParallelDescriptor::MyProc();
+   plotname = amrex::Concatenate(plotname, myproc, 2);
 
    std::string filename = plotname + ".txt";
 
    std::ofstream ofs(filename, std::ofstream::out);
     if (domdir == 1){
-        Print(ofs) << "# x ro rou rov roE pre" << "\n";
+        Print(myproc,ofs) << "# x ro rou rov roE pre" << "\n";
     } else {
-        Print(ofs) << "# y ro rou rov roE pre" << "\n";
+        Print(myproc,ofs) << "# y ro rou rov roE pre" << "\n";
     }
   
 
@@ -1319,16 +1341,28 @@ AmrCoreAdv::WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int
             if (j==1){
             Real len = geom.ProbHi(0) - geom.ProbLo(0);
             Real x = geom.ProbLo(0) + (i + 0.5)*geom.CellSize(0);
-            Print(ofs) << x/len << "\t" << a(i,j,k,ro) << "\t" << a(i,j,k,rou) << "\t"
-            << a(i,j,k,rov) << "\t" << a(i,j,k,roE) << "\t" << a(i,j,k,pre) << "\n";
+            // Print(ofs) << x/len << "\t" << a(i,j,k,ro) << "\t" << a(i,j,k,rou) << "\t"
+            // << a(i,j,k,rov) << "\t" << a(i,j,k,roE) << "\t" << a(i,j,k,pre) << "\n";
+            Print(myproc,ofs).SetPrecision(8) << std::left << std::setw(12) << x/len << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
+            << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,roE) << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,pre) << "\n";
             }
         }
         else {
             if (i==1){
             Real len = geom.ProbHi(1) - geom.ProbLo(1);
             Real y = geom.ProbLo(1) + (j + 0.5)*geom.CellSize(1);
-            Print(ofs) << y/len << "\t\t" << a(i,j,k,ro) << "\t" << a(i,j,k,rou) << "\t"
-            << a(i,j,k,rov) << "\t" << a(i,j,k,roE) << "\t" << a(i,j,k,pre) << "\n";
+            // Print(ofs) << y/len << "\t\t" << a(i,j,k,ro) << "\t" << a(i,j,k,rou) << "\t"
+            // << a(i,j,k,rov) << "\t" << a(i,j,k,roE) << "\t" << a(i,j,k,pre) << "\n";
+            Print(myproc,ofs).SetPrecision(8) << std::left << std::setw(12) << y/len << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
+            << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,roE) << "\t" 
+            << std::left << std::setw(12) << a(i,j,k,pre) << "\n";
             }
         }
        }
@@ -1348,6 +1382,9 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
     plotname = amrex::Concatenate(plotname, domdir, 1);
     plotname = plotname + "l";
     plotname = amrex::Concatenate(plotname, lev, 1);
+    plotname = plotname + "r";
+    int myproc = ParallelDescriptor::MyProc();
+    plotname = amrex::Concatenate(plotname, myproc, 2);
     std::string filename;
 
     if (max_level == 0){
@@ -1384,7 +1421,7 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
                     if (j==1){
                         Real len = geom1.ProbHi(0) - geom1.ProbLo(0);
                         Real x = geom1.ProbLo(0) + (i + 0.5)*geom1.CellSize(0);
-                        Print(ofs).SetPrecision(8) << std::left << std::setw(12) << x/len << "\t" 
+                        Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << x/len << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
                         << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
@@ -1403,7 +1440,7 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
                     if (i==1){
                         Real len = geom1.ProbHi(1) - geom1.ProbLo(1);
                         Real y = geom1.ProbLo(1) + (j + 0.5)*geom1.CellSize(1);
-                        Print(ofs).SetPrecision(8) << std::left << std::setw(12) << y/len << "\t" 
+                        Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << y/len << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
                         << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
                         << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
@@ -1416,4 +1453,37 @@ AmrCoreAdv::writetxtfile (int lev, Real cur_time, int stepnum)
     }
 }
    ofs.close();
+}
+
+Real
+AmrCoreAdv::get_gradp(int lev, Box const& validbox, Array4<Real const> const& a)
+{
+   Real gradpmax = 0.0;
+   const auto lo = lbound(validbox);
+   const auto hi = ubound(validbox);
+   const int nf = a.nComp();
+   Real gradp;
+   const Geometry& geom1 = geom[lev];
+   Real dx[2];
+   dx[0] = geom1.CellSize(0);
+   dx[1] = geom1.CellSize(1);
+
+   for     (int k = lo.z; k <= hi.z; ++k) {
+     for   (int j = lo.y; j <= hi.y; ++j) {
+       for (int i = lo.x; i <= hi.x; ++i) {
+        if (domdir == 1){
+            gradp = 0.5*(a(i+1,j,k,pre) - a(i-1,j,k,pre))/dx[0];
+            // Print(ParallelDescriptor::MyProc()) << "i= " << i << "gradp= " << gradp << "\n";
+        }
+        else {
+            gradp = 0.5*(a(i,j+1,k,pre) - a(i,j-1,k,pre))/dx[1];
+        }
+        if (fabs(gradp) > fabs(gradpmax)){
+            gradpmax = gradp;
+        }
+       }
+     }
+   }
+   // Print(ParallelDescriptor::MyProc()) << "i= " << i << "gradp= " << gradp << "\n";
+    return fabs(gradpmax);
 }

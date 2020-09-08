@@ -43,7 +43,7 @@ extern "C"
 		     const int* lo, const int* hi,
 		     const amrex_real* dx, const amrex_real* problo,
 		     const amrex_real* time, const amrex_real* phierr, const int* nc,
-		     const int* domdir);
+		     const int* domdir, const amrex_real* maxgradp);
 
     void advect(const int* level, const amrex_real* time, const int* rk, const int* rk_max,
     	 const int* fct_step,
