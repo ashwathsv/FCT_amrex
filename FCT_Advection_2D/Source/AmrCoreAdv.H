@@ -12,6 +12,7 @@
 #include <AMReX_AmrCore.H>
 #include <AMReX_FluxRegister.H>
 #include <AMReX_BCRec.H>
+#include <AMReX_MultiFab.H>
 
 using namespace amrex;
 
@@ -101,15 +102,19 @@ private:
 
     // get plotfile name
     std::string PlotFileName (int lev) const;
+    std::string ErrFileName (int lev) const;
 
     // put together an array of multifabs for writing
     amrex::Vector<const amrex::MultiFab*> PlotFileMF () const;
+    amrex::Vector<const amrex::MultiFab*> ErrFileMF () const;
 
     // set plotfile variables names
     amrex::Vector<std::string> PlotFileVarNames () const;
+    amrex::Vector<std::string> ErrFileVarNames () const;
 
     // write plotfile to disk
     void WritePlotFile () const;
+    void WriteErrFile () const;
 
     // write checkpoint file to disk
     void WriteCheckpointFile () const;
@@ -120,14 +125,7 @@ private:
     // utility to skip to next line in Header
     static void GotoNextLine (std::istream& is);
 
-    // print out results to check output (testing)
-    void printout (Box const& bx, Array4<Real> const& a);
-
-    void WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int stepnum, const Geometry& geom);
-
-    void writetxtfile (int lev, Real cur_time, int step_num);
-
-    Real get_gradp(int lev, Box const& validbox, Array4<Real const> const& a, int &maxind);
+    Real get_gradro(int lev, Box const& validbox, Array4<Real const> const& a, int dir);
     ////////////////
     // private data members
 
@@ -143,6 +141,8 @@ private:
     // after advancing a level we use "swap".
     amrex::Vector<amrex::MultiFab> phi_new;
     amrex::Vector<amrex::MultiFab> phi_old;
+    amrex::MultiFab exact;
+    // amrex::MultiFab err;
 
     // BCRec is essentially a 2*DIM integer array storing the physical boundary
     // condition types at the lo/hi walls in each direction
@@ -178,6 +178,7 @@ private:
 
     // plotfile prefix and frequency
     std::string plot_file {"plt"};
+    std::string err_file {"err"};
     int plot_int = -1;
 
     // checkpoint prefix and frequency
@@ -187,8 +188,8 @@ private:
     int ncomp  = 5;
     const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4;
     int nghost = 4;
-    int domdir = 1;
-    int max_rk = 4;
+    int max_rk = 2;
+    Real ro2 = 1.0, ro1 = 0.5, u = 1.0, v = 0.0, p = 1.0, xw = 0.0, yw = 0.0;
 };
 
 #endif

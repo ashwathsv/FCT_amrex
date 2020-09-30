@@ -39,8 +39,7 @@ real(amrex_real), intent(in   ) :: vy  (vy_lo(1):vy_hi(1),vy_lo(2):vy_hi(2))
 real(amrex_real), intent(inout) :: flxx(fx_lo(1):fx_hi(1),fx_lo(2):fx_hi(2),fx_lo(3):fx_hi(3),0:nc-1)
 real(amrex_real), intent(inout) :: flxy(fy_lo(1):fy_hi(1),fy_lo(2):fy_hi(2),fy_lo(3):fy_hi(3),0:nc-1)
 
-integer :: i, j
-real(amrex_real) :: umax, vmax, coeff
+real(amrex_real) :: umax, vmax
 integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
 
 ! Some compiler may not support 'contiguous'.  Remove it in that case.

@@ -1,0 +1,56 @@
+max_step  = 1000
+stop_time = 10.0
+
+#	COMPONENTS
+# ncomp = 5
+# domdir = 1	#	1: x, 2: y
+max_rk = 2
+
+# PROBLEM SIZE & GEOMETRY
+geometry.is_periodic =  1  1  1
+geometry.coord_sys   =  0       # 0 => cart
+# Domain size (m)
+geometry.prob_lo     =  -5.0  -5.0  1.0 
+geometry.prob_hi     =  5.0  5.0  1.0
+amr.n_cell           =  64  64   1
+
+# VERBOSITY
+amr.v              = 1       # verbosity in Amr
+amr.n_error_buf	   = 8
+amr.grid_eff	   = 0.7
+
+# REFINEMENT
+amr.max_level       = 1       # maximum level number allowed
+amr.ref_ratio       = 2 2 2 2 # refinement ratio
+amr.blocking_factor = 8       # block factor in grid generation
+amr.max_grid_size   = 64
+
+amr.regrid_int      = 1       # how often to regrid
+
+# TIME STEP CONTROL
+adv.cfl            = 0.4     # cfl number for hyperbolic system
+                             # In this test problem, the velocity is
+			     # time-dependent.  We could use 0.9 in
+			     # the 3D test, but need to use 0.7 in 2D
+			     # to satisfy CFL condition.
+
+adv.do_reflux = 1
+
+# Tagging
+adv.tagfrac = 0.1 		#	must be < 1 
+
+# PLOTFILES
+amr.plot_file  = Outputs/plt    # root name of plot file
+amr.plot_int   = 40    # number of timesteps between plot files
+
+# CHECKPOINT
+amr.chk_file = Outputs/chk      # root name of checkpoint file
+amr.chk_int  = 150      # number of timesteps between checkpoint files
+#	amr.restart  = Outputs/chk00550 # restart from this checkpoint file
+
+# INITIAL CONDITIONS
+prob.probtag = 1
+
+# DEFINING SIZE OF SQUARE WAVE (CENTRED AT ORIGIN)
+prob.xcm		  = 0.0				#	Centre of isentropic vortex (x-coordinate), in metres
+prob.ycm		  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres

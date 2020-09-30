@@ -9,6 +9,10 @@ results*/
 Backtrace*
 ref*
 *lev*
-*core*
+err*
+err*/
+Outputs
+Outputs/*
+*.mpg
 
 

@@ -10,13 +10,14 @@ extern "C"
     // these are interfaces to fortran subroutines
 
     void initdata(const int* level, const amrex_real* time, const int* nc,
-    	  const int* domdir,
 		  const int* lo, const int* hi,
 		  BL_FORT_FAB_ARG_3D(state),
 		  const amrex_real* dx, const amrex_real* problo, const amrex_real* probhi,
 		  const amrex_real* ro2, const amrex_real* ro1, 
-		  const amrex_real* v2, const amrex_real* v1, 
-		  const amrex_real* p2, const amrex_real* p1);
+		  const amrex_real* u,
+		  const amrex_real* v, 
+		  const amrex_real* p, 
+		  const amrex_real* xw, const amrex_real* yw);
 
     void get_face_velocity(const int* level, const amrex_real* time, 
     			const int* lo, const int* hi,
@@ -25,7 +26,8 @@ extern "C"
 				  BL_FORT_FAB_ARG(zvel)),
 			   const amrex_real* dx, const amrex_real* problo,
 			   BL_FORT_FAB_ARG_3D(state),
-			   const int* nc, const int* ddir);
+			   const int* nc, 
+			   const amrex_real* u, const amrex_real* v);
 
     void get_face_velocity_dt(const int* level, const amrex_real* time, 
 			   AMREX_D_DECL(BL_FORT_FAB_ARG(xvel),
@@ -33,21 +35,22 @@ extern "C"
 				  BL_FORT_FAB_ARG(zvel)),
 			   // BL_FORT_FAB_ARG_3D(state), const int* nc,
 			   const amrex_real* dx, const amrex_real* problo,
-			   const int* domdir, amrex_real* umaxs,
+			   amrex_real* umax, amrex_real* vmax,
 			   const int* nc, BL_FORT_FAB_ARG_3D(phi),
-			   const int* lo, const int* hi);
+			   const int* lo, const int* hi,
+			   const amrex_real* u, const amrex_real* v);
 
     void state_error(int* tag, const int* tag_lo, const int* tag_hi,
 		     const BL_FORT_FAB_ARG_3D(state),
 		     const int* tagval, const int* clearval,
 		     const int* lo, const int* hi,
 		     const amrex_real* dx, const amrex_real* problo,
-		     const amrex_real* time, const amrex_real* phierr, const int* nc,
-		     const int* domdir, const amrex_real* maxgradp);
+		     const amrex_real* time, const int* nc,
+		     const amrex_real* maxgrox, const amrex_real* maxgroy, const amrex_real* tagfrac);
 
     void advect(const int* level, const amrex_real* time, const int* rk, const int* rk_max,
     	 const int* fct_step,
-    	const int* ddir, const int* nc,
+    	 const int* nc,
     	const int* lo, const int* hi,
     	BL_FORT_FAB_ARG_3D(stateold),
 		BL_FORT_FAB_ARG_3D(statex),
@@ -59,7 +62,8 @@ extern "C"
 		AMREX_D_DECL(BL_FORT_FAB_ARG_3D(fx),
 		       BL_FORT_FAB_ARG_3D(fy),
 		       BL_FORT_FAB_ARG_3D(fz)),
-		const amrex_real* dx, const amrex_real* dt);
+		const amrex_real* dx, const amrex_real* dt,
+		const amrex_real* u, const amrex_real* v);
 
     void phifill (BL_FORT_FAB_ARG_3D(state),
 		  const int* dlo, const int* dhi,

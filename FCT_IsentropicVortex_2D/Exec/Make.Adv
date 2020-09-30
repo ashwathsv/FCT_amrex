@@ -1,5 +1,5 @@
 AMREX_HOME ?= /Users/ashwathsv/amrex-development
-ADR_DIR  ?= /Users/ashwathsv/FCT_amrex/FCT_shocktube_2D
+ADR_DIR  ?= /Users/ashwathsv/FCT_amrex/FCT_IsentropicVortex_2D
 
 TOP := $(ADR_DIR)
 
