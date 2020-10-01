@@ -125,8 +125,7 @@ private:
             }
     };
 
-    void WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int stepnum, const Geometry& geom);
-
+    void CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const Geometry& geom);
 
     // get plotfile name
     std::string PlotFileName (int lev) const;

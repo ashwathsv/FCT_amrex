@@ -382,47 +382,22 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
         // do something for external Dirichlet (BCType::ext_dir) if there are
 }
 
-// function to write results to file (for testing purposes)
+// function to calculate pressure and entropy from conservative quantities (for testing purposes)
 void 
-AmrCoreAdv::WriteTxtFileInit (int lev, Box const& bx, Array4<Real> const& a, int stepnum, const Geometry& geom)
+AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const Geometry& geom)
 {
    const auto lo = lbound(bx);
    const auto hi = ubound(bx);
    const int nf = a.nComp();
 
-   std::string plotname = amrex::Concatenate("plt",stepnum,5);
-   
-   plotname = plotname + "l";
-   plotname = amrex::Concatenate(plotname, lev, 1);
-   plotname = plotname + "r";
-   int myproc = ParallelDescriptor::MyProc();
-   plotname = amrex::Concatenate(plotname, myproc, 2);
-
-   std::string filename = plotname + ".txt";
-
-   std::ofstream ofs(filename, std::ofstream::out);
-   
-   Print(myproc,ofs) << "# i j ro rou rov roE pre ent" << "\n";
-  
-
-   for     (int k = lo.z; k <= hi.z; ++k) {
-     for   (int j = lo.y -  nghost; j <= hi.y + nghost; ++j) {
-       for (int i = lo.x - nghost; i <= hi.x + nghost; ++i) {
-            Real len = geom.ProbHi(0) - geom.ProbLo(0);
-            Real x = geom.ProbLo(0) + (i + 0.5)*geom.CellSize(0);
-            // Print(ofs) << x/len << "\t" << a(i,j,k,ro) << "\t" << a(i,j,k,rou) << "\t"
-            // << a(i,j,k,rov) << "\t" << a(i,j,k,roE) << "\t" << a(i,j,k,pre) << "\n";
-            Print(myproc,ofs).SetPrecision(8) 
-            << std::left << std::setw(4) << i << std::setw(4) << j << "\t" 
-            << std::left << std::setw(12) << a(i,j,k,ro)  << "\t" 
-            << std::left << std::setw(12) << a(i,j,k,rou) << "\t"
-            << std::left << std::setw(12) << a(i,j,k,rov) << "\t" 
-            << std::left << std::setw(12) << a(i,j,k,roE) << "\t" 
-            << std::left << std::setw(12) << a(i,j,k,pre) << "\t"
-            << std::left << std::setw(12) << a(i,j,k,ent) << "\n";
-       }
-     }
+   for(int k = lo.z; k <= hi.z; ++k){
+      for(int j = lo.y; j <= hi.y; ++j){
+         for(int i = lo.x; i <= hi.x; ++i){
+            a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
+            -   0.5*( ( pow(a(i,j,k,rou),2) + pow(a(i,j,k,rov),2) )/a(i,j,k,ro) ) );
+            a(i,j,k,ent) = a(i,j,k,pre)/std::pow(a(i,j,k,ro),gamma);
+         }
+      }
    }
 
-   ofs.close();
 }

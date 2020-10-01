@@ -498,7 +498,7 @@ module LCPFCT_module
         do k = fx_lo(3), fx_hi(3)
           do j = fx_lo(2), fx_hi(2)
             do i = fx_lo(1), fx_hi(1)
-              flxx(i,j,k,n) = (flxx(i,j,k,n) + dxdt*fltx(i,j,k,n))*dx(2)
+              flxx(i,j,k,n) = (flxx(i,j,k,n) + dxdt*fltx(i,j,k,n))*dx(2)*dt
             enddo
           enddo
         enddo
@@ -507,7 +507,7 @@ module LCPFCT_module
         do k = fy_lo(3), fy_hi(3)
           do j = fy_lo(2), fy_hi(2)
             do i = fy_lo(1), fy_hi(1)
-              flxy(i,j,k,n) = (flxy(i,j,k,n) + dydt*flty(i,j,k,n))*dx(1)
+              flxy(i,j,k,n) = (flxy(i,j,k,n) + dydt*flty(i,j,k,n))*dx(1)*dt
             enddo
           enddo
         enddo

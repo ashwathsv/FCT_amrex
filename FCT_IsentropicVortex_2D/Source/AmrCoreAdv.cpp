@@ -709,84 +709,54 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
     if (lev < finest_level)
     {
         // recursive call for next-finer level
-	for (int i = 1; i <= nsubsteps[lev+1]; ++i)
-	{
-	    timeStep(lev+1, time+(i-1)*dt[lev+1], i, step);
-	}
+	   for (int i = 1; i <= nsubsteps[lev+1]; ++i)
+	   {
+	       timeStep(lev+1, time+(i-1)*dt[lev+1], i, step);
+	   }
 
-    ParallelDescriptor::Barrier();
-    AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
-    phi_new[lev].FillBoundary();
-    phi_new[lev].FillBoundary(geom[lev].periodicity());
+        ParallelDescriptor::Barrier();
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        phi_new[lev].FillBoundary();
+        phi_new[lev].FillBoundary(geom[lev].periodicity());
 
-	if (do_reflux)
-	{
+	   if (do_reflux)
+	   {
             // update lev based on coarse-fine flux mismatch
-	    // flux_reg[lev+1]->Reflux(phi_new[lev], 1.0, 0, 0, phi_new[lev].nComp(), geom[lev]);
+	       flux_reg[lev+1]->Reflux(phi_new[lev], 1.0, 0, 0, phi_new[lev].nComp(), geom[lev]);
 
-     //    ParallelDescriptor::Barrier();
+            ParallelDescriptor::Barrier();
 
-     //    for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
-     //    {
+            for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
+            {
+                const Box& box = mfi.tilebox();
+                FArrayBox& fab = phi_new[lev][mfi];
+                Array4<Real> const& a = fab.array();
+                CalcAuxillary (lev, box, a, geom[lev]);
+            }//for(MFIter)
 
-     //        const Box& box = mfi.tilebox();
-     //        const auto lo  = lbound(box);
-     //        const auto hi  = ubound(box);
-
-     //        FArrayBox& fab = phi_new[lev][mfi];
-
-     //        Array4<Real> const& a = fab.array();
-     //        // Real gma = 1.4;
-     //        for(int k = lo.z; k <= hi.z; ++k){
-     //            for(int j = lo.y; j <= hi.y; ++j){
-     //                for(int i = lo.x; i <= hi.x; ++i){
-     //                    a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
-     //                    -   0.5*( ( pow(a(i,j,k,rou),2) + pow(a(i,j,k,rov),2) )/a(i,j,k,ro) ) );
-     //                    a(i,j,k,ent) = a(i,j,k,pre)/std::pow(a(i,j,k,ro),gamma);
-     //                }
-     //            }
-     //        }
-
-     //    }//for(MFIter)
-
-     //    ParallelDescriptor::Barrier();
-     //    phi_new[lev].FillBoundary();
-     //    AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
-     //    phi_new[lev].FillBoundary(geom[lev].periodicity());
-	}
-
-    ParallelDescriptor::Barrier();
-	AverageDownTo(lev); // average lev+1 down to lev
-    for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
-    {
-        const Box& box = mfi.tilebox();
-        const auto lo  = lbound(box);
-        const auto hi  = ubound(box);
-
-        FArrayBox& fab = phi_new[lev][mfi];
-
-        Array4<Real> const& a = fab.array();
-        // Real gma = 1.4;
-        for(int k = lo.z; k <= hi.z; ++k){
-            for(int j = lo.y; j <= hi.y; ++j){
-                for(int i = lo.x; i <= hi.x; ++i){
-                        a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
-                        -   0.5*( ( pow(a(i,j,k,rou),2) + pow(a(i,j,k,rov),2) )/a(i,j,k,ro) ) );
-                        a(i,j,k,ent) = a(i,j,k,pre)/std::pow(a(i,j,k,ro),gamma);
-                }
-            }
+            ParallelDescriptor::Barrier();
+            phi_new[lev].FillBoundary();
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+            phi_new[lev].FillBoundary(geom[lev].periodicity());
+	   }
+        ParallelDescriptor::Barrier();
+        AverageDownTo(lev); // average lev+1 down to lev
+        for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
+        {
+            const Box& box = mfi.tilebox();
+            FArrayBox& fab = phi_new[lev][mfi];
+            Array4<Real> const& a = fab.array();
+            CalcAuxillary (lev, box, a, geom[lev]);
+        }//for(MFIter)
+        if(lev == 0){
+            phi_new[lev].FillBoundary();
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+            phi_new[lev].FillBoundary(geom[lev].periodicity());
+        }else{
+            phi_new[lev].FillBoundary();
+            phi_new[lev].FillBoundary(geom[lev].periodicity());
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
         }
-    }//for(MFIter)
-
-    if(lev == 0){
-        phi_new[lev].FillBoundary();
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
-        phi_new[lev].FillBoundary(geom[lev].periodicity());
-    }else{
-        phi_new[lev].FillBoundary();
-        phi_new[lev].FillBoundary(geom[lev].periodicity());
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
-    }
 
     }
 
