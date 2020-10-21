@@ -46,12 +46,41 @@ AmrCoreAdv::AmrCoreAdv ()
     bcs.resize(ncomp);
 
     //  Set periodic BCs in y-direction
+    // bcs[rou].setLo(0, BCType::reflect_odd);
+    // // bcs[rou].setHi(0, BCType::foextrap);
+    // bcs[rou].setHi(0, BCType::ext_dir);
+    // bcs[rou].setLo(1, BCType::reflect_even);
+    // bcs[rou].setHi(1, BCType::reflect_even);    
+
+    // bcs[rov].setLo(0, BCType::reflect_even);
+    // bcs[rov].setHi(0, BCType::ext_dir);
+    // bcs[rov].setLo(1, BCType::reflect_odd);
+    // bcs[rov].setHi(1, BCType::reflect_odd); 
+
+    // bcs[ro].setLo(0, BCType::reflect_even);
+    // bcs[ro].setHi(0, BCType::ext_dir);
+    // bcs[ro].setLo(1, BCType::reflect_even);
+    // bcs[ro].setHi(1, BCType::reflect_even); 
+
+    // for(int n = roE; n <= mach; ++n){
+    //     bcs[n].setLo(0, BCType::reflect_even);
+    //     bcs[n].setHi(0, BCType::ext_dir);
+
+    //     bcs[n].setLo(1, BCType::reflect_even);
+    //     bcs[n].setHi(1, BCType::reflect_even);         
+    // }
     for (int n = 0; n < ncomp; ++n){
-        for (int dir = 0; dir <= 1; ++dir){
-            bcs[n].setLo(dir, BCType::ext_dir);
-            bcs[n].setHi(dir, BCType::ext_dir);
-        }
+        // for (int dir = 0; dir <= 1; ++dir){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::foextrap);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::foextrap);
+            // bcs[n].setLo(1, BCType::ext_dir);
+            // bcs[n].setHi(0, BCType::ext_dir);
+            // bcs[n].setHi(1, BCType::ext_dir);
+        // }
     }
+    bcs[rou].setLo(0, BCType::reflect_odd);
 
     // stores fluxes at coarse-fine interface for synchronization
     // this will be sized "nlevs_max+1"
@@ -106,6 +135,7 @@ AmrCoreAdv::InitData ()
         InitFromScratch(time);
         ParallelDescriptor::Barrier();
         AverageDown();
+        ParallelDescriptor::Barrier();
 
         if (chk_int > 0) {
             WriteCheckpointFile();
@@ -207,18 +237,18 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     // Real ro2, ro1, u2, u1, v2, v1, p, xw, yw;
     {
         ParmParse pp("prob");
-        pp.query("probtag",probtag);
-        if(probtag == 6){
-            pp.get("xcm",xcm);
-            pp.get("ycm",ycm);
-            pp.get("alpha",alpha);
-            pp.get("Mach_fs",Mach_fs);
-            pp.get("rofs",rofs);
-            pp.get("Tfs",Tfs);
-            pp.get("R",R);
-            pp.get("sigma",sigma);
-            pp.get("beta",beta);                   
-        }
+        
+        pp.get("p2",p2);
+        pp.get("p1",p1);
+        pp.get("ro2",ro2);
+        pp.get("ro1",ro1);
+        pp.get("u2",u2);
+        pp.get("u1",u1);
+        pp.get("v2",v2);
+        pp.get("v1",v1);
+        pp.get("lx",lx);
+        pp.get("ly",ly);  
+        // pp.get("pfs",pfs);            
     }
 
     phi_new[lev].define(ba, dm, ncomp, nghost);
@@ -249,7 +279,7 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         FArrayBox& mfab = state[mfi];
         Array4<Real> const& a = mfab.array();
 
-        AmrCoreAdv::initVortex(lev,box,a,geom[lev]);
+        AmrCoreAdv::initBlastTube(lev,box,a,geom[lev]);
     }
     ParallelDescriptor::Barrier();
     if (lev == 0) {
@@ -312,14 +342,33 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
     const Real* prob_lo = geom[lev].ProbLo();
 
     const MultiFab& state = phi_new[lev];
-    int nc = phi_new[lev].nComp();
-    Real roinf = rofs;
+    int comp_lo = ro;
+    int comp_hi = pre;
+    Real maxgradpx = 0.0, maxgradpy = 0.0, gradpxtemp, gradpytemp;
 
 #ifdef _OPENMP
 #pragma omp parallel
 #endif
     {
         Vector<int>  itags;
+
+        for(MFIter mfi(state, true); mfi.isValid(); ++mfi){
+            const Box& tmpbox  = mfi.validbox();
+            Array4<Real const> const& a = state[mfi].const_array();
+
+            gradpxtemp = get_gradp(lev, tmpbox, a, 0);
+            if(fabs(gradpxtemp) > fabs(maxgradpx)){
+                maxgradpx = gradpxtemp;
+            }
+
+            gradpytemp = get_gradp(lev, tmpbox, a, 1);
+            if(fabs(gradpytemp) > fabs(maxgradpy)){
+                maxgradpy = gradpytemp;
+            }
+        }
+    // Get global maximum of pressure gradient (use this as criterion for refinement)
+    ParallelDescriptor::ReduceRealMax(maxgradpx);
+    ParallelDescriptor::ReduceRealMax(maxgradpy);
 
     for (MFIter mfi(state,true); mfi.isValid(); ++mfi)
     {
@@ -344,7 +393,8 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
             BL_TO_FORTRAN_3D(state[mfi]),
             &tagval, &clearval,
             AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
-            AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &nc, &roinf, &tagfrac);
+            AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, &maxgradpx, &maxgradpy,
+            &tagfrac);
         //
         // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags
@@ -791,6 +841,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
         FillCoarsePatch(lev, time, Sconvy, 0, Sconvy.nComp());
         FillCoarsePatch(lev, time, S_new, 0, S_new.nComp());       
     }
+    ParallelDescriptor::Barrier();
 
 #ifdef _OPENMP
 #pragma omp parallel

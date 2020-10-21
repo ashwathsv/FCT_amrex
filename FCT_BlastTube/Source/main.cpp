@@ -4,6 +4,7 @@
 #include <AMReX.H>
 #include <AMReX_BLProfiler.H>
 #include <AMReX_ParallelDescriptor.H>
+#include <AMReX_ParmParse.H>
 
 #include <AmrCoreAdv.H>
 
@@ -23,7 +24,6 @@ int main(int argc, char* argv[])
         // constructor - reads in parameters from inputs file
         //             - sizes multilevel arrays and data structures
         AmrCoreAdv amr_core_adv;
-	
         // initialize AMR data
 	amr_core_adv.InitData();
 

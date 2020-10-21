@@ -1,4 +1,4 @@
-AMREX_HOME ?= /Users/ashwathsv/amrex-development
+AMREX_HOME ?= /Users/ashwathsv/amrex
 PRECISION  = DOUBLE
 # TINY_PROFILE = TRUE
 # PROFILE      = FALSE
@@ -6,12 +6,13 @@ PRECISION  = DOUBLE
 # AMREX_ENABLE_BASE_PROFILE = OFF
 
 DEBUG      = TRUE
-#DEBUG      = FALSE
+# DEBUG      = FALSE
 
 DIM        = 2
 #DIM       = 3
 
 COMP	   = gnu
+CXXSTD     = c++11
 
 USE_MPI    = TRUE
 USE_OMP    = FALSE

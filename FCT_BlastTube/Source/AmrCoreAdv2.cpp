@@ -18,7 +18,7 @@ using namespace amrex;
 
 // Functions in this file (member functions of AmrCoreAdv)
 
-// initVortex() : function to set the initial conditions of isentropic vortex
+// initBlastTube() : function to set the initial conditions of blast wave problem
 
 // WriteCheckpointFile() : function to write checkpoint output file
 
@@ -32,24 +32,17 @@ using namespace amrex;
 
 // ---------------------------------------------------------------------------------------------
 void 
-AmrCoreAdv::initVortex (int &lev, Box const& bx, Array4<Real> const& a, const Geometry& geom)
+AmrCoreAdv::initBlastTube (int &lev, Box const& bx, Array4<Real> const& a, const Geometry& geom)
 {
    const auto lo = lbound(bx);
    const auto hi = ubound(bx);
 
-   if(probtag == 1){
-   	alpha = 0.25*pi;
-   	Mach_fs = std::sqrt(2.0/gamma);
-   	rofs = 1.0;
-   	pfs = 1.0;	Tfs = 1.0;
-   	R = 1.0; sigma = 1.0;
-   	beta = 0.25*Mach_fs*5.0*std::sqrt(2.0)*std::exp(0.5)/pi;
-   	ss_fs = std::sqrt(gamma*pfs/rofs);
-   }
-      // ufs = Mach_fs*std::cos(alpha);
-      // vfs = Mach_fs*std::sin(alpha);
-      ufs = 0.0;
-      vfs = 0.0;
+
+   // The high pressure region is a small square of 5cmx5cm with its 
+   // left lower corner coinciding 
+   // with the lower end of the domain
+   xcm = geom.ProbLo(0);
+   ycm = geom.ProbLo(1);
 
    for(int k = lo.z; k <= hi.z; ++k){
    		for(int j = lo.y; j <= hi.y; ++j){
@@ -57,19 +50,23 @@ AmrCoreAdv::initVortex (int &lev, Box const& bx, Array4<Real> const& a, const Ge
    				Real x = geom.ProbLo(0) + (i + 0.5)*geom.CellSize(0);
    				Real y = geom.ProbLo(1) + (j + 0.5)*geom.CellSize(1);
 
-   				Real fxy = -0.5*( std::pow( (x-xcm)/R,2.0 ) + std::pow( (y-ycm)/R,2.0 ) )/(std::pow(sigma,2.0));
-   				Real omega = beta*std::exp(fxy);
-   				Real du = -omega*(y-ycm)/R;
-   				Real dv = omega*(x-xcm)/R;
-   				Real dT = -0.5*(gamma-1.0)*std::pow(omega,2.0)/std::pow(sigma,2.0);
-
-   				a(i,j,k,ro) = std::pow(1+dT,c1)*rofs;
-   				a(i,j,k,rou) = a(i,j,k,ro)*(ufs + du)*ss_fs;
-   				a(i,j,k,rov) = a(i,j,k,ro)*(vfs + dv)*ss_fs;
-   				a(i,j,k,pre) = pfs*std::pow(1.0 + dT, gamma/(gamma-1))/gamma;
-   				a(i,j,k,roE) = a(i,j,k,pre)*c1 + 0.5*( ( std::pow(a(i,j,k,rou),2.0) 
-   							 + std::pow(a(i,j,k,rov),2.0) )/a(i,j,k,ro) );
-          a(i,j,k,ent) = a(i,j,k,pre)/std::pow(a(i,j,k,ro),gamma);
+   				if(x <= xcm + lx && y <= ycm + ly){
+            a(i,j,k,ro) = ro2;
+            a(i,j,k,rou) = ro2*u2;
+            a(i,j,k,rov) = ro2*v2;
+            a(i,j,k,pre) = p2;            
+          }else{
+            a(i,j,k,ro) = ro1;
+            a(i,j,k,rou) = ro1*u1;
+            a(i,j,k,rov) = ro1*v1;
+            a(i,j,k,pre) = p1;             
+          }
+            a(i,j,k,roE) = a(i,j,k,pre)*c1 + 0.5*( ( std::pow(a(i,j,k,rou),2.0) 
+                   + std::pow(a(i,j,k,rov),2.0) )/a(i,j,k,ro) );
+            Real ss = std::sqrt(gamma*a(i,j,k,pre)/a(i,j,k,ro));
+            Real velmod = std::sqrt( std::pow(a(i,j,k,rou)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,rov)/a(i,j,k,ro),2.0) );
+            a(i,j,k,mach) = velmod/ss;
    			}
    		}
    }
@@ -323,7 +320,7 @@ AmrCoreAdv::PlotFileMF () const
 Vector<std::string>
 AmrCoreAdv::PlotFileVarNames () const
 {
-    return {"ro","rou","rov","roE","pre","ent"};
+    return {"ro","rou","rov","roE","pre","Mach"};
     // return {"ro"};
 }
 
@@ -386,11 +383,55 @@ AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const 
          for(int i = lo.x; i <= hi.x; ++i){
             a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
             -   0.5*( ( pow(a(i,j,k,rou),2) + pow(a(i,j,k,rov),2) )/a(i,j,k,ro) ) );
-            a(i,j,k,ent) = a(i,j,k,pre)/std::pow(a(i,j,k,ro),gamma);
+            Real ss = std::sqrt(gamma*a(i,j,k,pre)/a(i,j,k,ro));
+            Real velmod = std::sqrt( std::pow(a(i,j,k,rou)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,rov)/a(i,j,k,ro),2.0) );
+            a(i,j,k,mach) = velmod/ss;
          }
       }
    }
 
+}
+
+Real
+AmrCoreAdv::get_gradp(int lev, Box const& validbox, Array4<Real const> const& a, int dir)
+{
+   Real gradpmax = 0.0;
+   const auto lo = lbound(validbox);
+   const auto hi = ubound(validbox);
+   const int nf = a.nComp();
+   Real gradp;
+   const Geometry& geom1 = geom[lev];
+   Real dx[2];
+   dx[0] = geom1.CellSize(0);
+   dx[1] = geom1.CellSize(1);
+   int myproc = ParallelDescriptor::MyProc();
+
+    if(dir == 0){
+        for     (int k = lo.z; k <= hi.z; ++k) {
+            for   (int j = lo.y; j <= hi.y; ++j) {
+                for (int i = lo.x; i <= hi.x; ++i) {
+                    gradp = 0.5*(a(i+1,j,k,pre) - a(i-1,j,k,pre))/dx[0];
+                    if (fabs(gradp) > fabs(gradpmax)){
+                        gradpmax = gradp;
+                    }
+                }
+            }
+        }
+    }else if(dir == 1){
+        for     (int k = lo.z; k <= hi.z; ++k) {
+            for   (int j = lo.y; j <= hi.y; ++j) {
+                for (int i = lo.x; i <= hi.x; ++i) {
+                    gradp = 0.5*(a(i,j+1,k,pre) - a(i,j-1,k,pre))/dx[1];
+                    if (fabs(gradp) > fabs(gradpmax)){
+                        gradpmax = gradp;
+                    }
+                }
+            }
+        }        
+    }
+   // Print(ParallelDescriptor::MyProc()) << "rank= " << myproc << "gradromax= " << gradromax << "\n";
+    return fabs(gradpmax);
 }
 
 void 
@@ -401,7 +442,7 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                             const int orig_comp)
 {
     int myproc = ParallelDescriptor::MyProc();
-    const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, ent = 5;
+    const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, mach = 5;
     const Real gamma = 1.4;
 
     Real pfs = 0.0;
@@ -433,6 +474,8 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
     Array4<Real> q(dest);
     BCRec const& bc = bcr[pre];
 
+    // Print() << "ncomp= " << numcomp << "\n";
+
     if (lo.x < ilo) {
       const int imin = lo.x;
       const int imax = ilo-1;
@@ -445,9 +488,9 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
             Real vmod_ilo = std::sqrt( std::pow(dest(ilo,j,k,rou)/dest(ilo,j,k,ro),2.0) 
                   + std::pow(dest(ilo,j,k,rov)/dest(ilo,j,k,ro),2.0) );
             Real ss_ilo = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
-            Real mach = vmod_ilo/ss_ilo;
+            dest(ilo,j,k,mach) = vmod_ilo/ss_ilo;
 
-            if(mach >= 1.0){
+            if(dest(ilo,j,k,mach) >= 1.0){
             // supersonic BC is only 1st order extrapolation for all quantities
               for (int i = imin; i <= imax; ++i) {
                 for (int n = 0; n < numcomp; ++n){
@@ -465,35 +508,38 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
               Real ent_ilo = dest(ilo,j,k,pre)/(std::pow(dest(ilo,j,k,ro),gamma));
               for(int i = imin; i <= imax; ++i){
                 dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_ilo, 1.0/gamma);
-                dest(i,j,k,ent) = ent_ilo;
               }
               Real riem1 = vmod_ilo + 2.0*ss_ilo/(gamma-1);
                 for(int i = imin; i <= imax; ++i){
-                  Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                  Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
-                  if(vmod_loc < 0.0){
-                    Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
-                    << "i = " << i << ", j= " << j << "\n";
-                  } 
-                  Real xvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(yvel_ilo,2.0));
-                  dest(i,j,k,rou) = dest(i,j,k,ro)*xvel;
-                  dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_ilo;
-                  dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                  + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                    Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
+                    Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
+                    if(vmod_loc < 0.0){
+                      Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
+                      << "i = " << i << ", j= " << j << "\n";
+                    } 
+                    Real xvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(yvel_ilo,2.0));
+                    dest(i,j,k,rou) = dest(i,j,k,ro)*xvel;
+                    dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_ilo;
+                    dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
+                    + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                    dest(i,j,k,mach) = vmod_loc/ss_loc;
+                  }
+
                 }
-
+                  // Print(myproc) << "rank= " << myproc << ", i = " << imax << ", j= " << j
+                  // << ", pre = " << dest(imax,j,k,pre) << "\n";
               }
-
             }
           }
-        }
-    }
+      }
 
         if (hi.x > ihi) {
             const int imin = ihi+1;
             const int imax = hi.x;
 
             if (bc.hi(0) == BCType::ext_dir) {
+              // Print(myproc) << "rank= " << myproc << ", pressure xlobc= " << bc.lo(0) 
+              // << ", pressure xhibc=" << bc.hi(0) << "\n";
               Real pinf = pfs;
               for (int k = lo.z; k <= hi.z; ++k) {
                 for (int j = lo.y; j <= hi.y; ++j) {
@@ -501,13 +547,19 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                   Real vmod_ihi = std::sqrt( std::pow(dest(ihi,j,k,rou)/dest(ihi,j,k,ro),2.0) 
                         + std::pow(dest(ihi,j,k,rov)/dest(ihi,j,k,ro),2.0) );
                   Real ss_ihi = std::sqrt(gamma*dest(ihi,j,k,pre)/dest(ihi,j,k,ro));
-                  Real mach = vmod_ihi/ss_ihi;
+                  dest(ihi,j,k,mach) = vmod_ihi/ss_ihi;
 
-                  if(mach >= 1.0){
+                  if(dest(ihi,j,k,mach) >= 1.0){
                     // supersonic BC is only 1st order extrapolation for all quantities
                     for (int i = imin; i <= imax; ++i) {
                       for (int n = 0; n < numcomp; ++n){
                           dest(i,j,k,n) = dest(ihi,j,k,n);
+                          if(n == numcomp-1){
+                          // Print(myproc) << "supersonic BC, rank= " << myproc << ", i= " << i << ", j= " << j
+                          // << ", ro= " << dest(i,j,k,ro) << ", rou= " << dest(i,j,k,rou)
+                          // << ", rov= " << dest(i,j,k,rov) << ", roE= " << dest(i,j,k,roE)
+                          // << ", pre= " << dest(i,j,k,pre) << ", mach= " << dest(i,j,k,mach) << "\n";                            
+                        }
                       }
                     }
                   }else{
@@ -522,7 +574,6 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                     Real ent_ihi = dest(ihi,j,k,pre)/(std::pow(dest(ihi,j,k,ro),gamma));
                     for(int i = imin; i <= imax; ++i){
                       dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_ihi, 1.0/gamma);
-                      dest(i,j,k,ent) = ent_ihi;
                     }
                     Real riem1 = vmod_ihi + 2.0*ss_ihi/(gamma-1);
                     for(int i = imin; i <= imax; ++i){
@@ -537,6 +588,13 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                       dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_ihi;
                       dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
                       + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                      dest(i,j,k,mach) = vmod_loc/ss_loc;
+
+                      Print(myproc) << "subsonic BC, rank= " << myproc << ", i= " << i << ", j= " << j
+                      << ", ro= " << dest(i,j,k,ro) << ", rou= " << dest(i,j,k,rou)
+                      << ", rov= " << dest(i,j,k,rov) << "yvel_ihi= " << yvel_ihi <<
+                       ", roE= " << dest(i,j,k,roE)
+                      << ", pre= " << dest(i,j,k,pre) << ", mach= " << dest(i,j,k,mach) << "\n"; 
                     }
 
                   }
@@ -560,9 +618,9 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
             Real vmod_jlo = std::sqrt( std::pow(dest(i,jlo,k,rou)/dest(i,jlo,k,ro),2.0) 
                   + std::pow(dest(i,jlo,k,rov)/dest(i,jlo,k,ro),2.0) );
             Real ss_jlo = std::sqrt(gamma*dest(i,jlo,k,pre)/dest(i,jlo,k,ro));
-            Real mach = vmod_jlo/ss_jlo;
+            dest(i,jlo,k,mach) = vmod_jlo/ss_jlo;
 
-            if(mach >= 1.0){
+            if(dest(i,jlo,k,mach) >= 1.0){
             // supersonic BC is only 1st order extrapolation for all quantities
               for (int j = jmin; j <= jmax; ++j) {
                 for (int n = 0; n < numcomp; ++n){
@@ -580,7 +638,6 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
               Real ent_jlo = dest(i,jlo,k,pre)/(std::pow(dest(i,jlo,k,ro),gamma));
               for(int j = jmin; j <= jmax; ++j){
                 dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_jlo, 1.0/gamma);
-                dest(i,j,k,ent) = ent_jlo;
               }
               Real riem1 = vmod_jlo + 2.0*ss_jlo/(gamma-1);
 
@@ -596,13 +653,31 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                 dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_jlo;
                 dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
                 + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                dest(i,j,k,mach) = vmod_loc/ss_loc;
               }
 
             }
 
           }
         }
-      } 
+      }
+
+    if(lo.x < ilo){
+      if(bc.lo(0) = BCType::reflect_even){
+        const int imin = lo.x;
+        const int imax = ilo-1;
+        //apply symmetry BC at lower corners of domain based on BC setup
+        for(int n = 0; n < numcomp; ++n){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = jmin; j <= jmax; ++j){
+              for(int i = imin; i <= imax; ++i){
+                dest(i,j,k,n) = dest(ilo+(ilo-i)-1,j,k,n);
+              }
+            }
+          }
+        }
+      }
+    }  
   }
 
     if (hi.y > jhi) {
@@ -617,9 +692,9 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
             Real vmod_jhi = std::sqrt( std::pow(dest(i,jhi,k,rou)/dest(i,jhi,k,ro),2.0) 
                   + std::pow(dest(i,jhi,k,rov)/dest(i,jhi,k,ro),2.0) );
             Real ss_jhi = std::sqrt(gamma*dest(i,jhi,k,pre)/dest(i,jhi,k,ro));
-            Real mach = vmod_jhi/ss_jhi;
+            dest(i,jhi,k,mach) = vmod_jhi/ss_jhi;
 
-            if(mach >= 1.0){
+            if(dest(i,jhi,k,mach) >= 1.0){
             // supersonic BC is only 1st order extrapolation for all quantities
               for (int j = jmin; j <= jmax; ++j) {
                 for (int n = 0; n < numcomp; ++n){
@@ -637,7 +712,6 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
               Real ent_jhi = dest(i,jhi,k,pre)/(std::pow(dest(i,jhi,k,ro),gamma));
               for(int j = jmin; j <= jmax; ++j){
                 dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_jhi, 1.0/gamma);
-                dest(i,j,k,ent) = ent_jhi;
               }
               Real riem1 = vmod_jhi + 2.0*ss_jhi/(gamma-1);
 
@@ -653,13 +727,31 @@ AmrCoreAdv::dummy_cpu_fill_extdir (Box const& bx, Array4<Real> const& dest,
                 dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_jhi;
                 dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
                 + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                dest(i,j,k,mach) = vmod_loc/ss_loc;
               }
 
             }
 
           }
         }
-      } 
+      }
+
+    if(lo.x < ilo){
+      if(bc.lo(0) = BCType::reflect_even){
+        const int imin = lo.x;
+        const int imax = ilo-1;
+        //apply symmetry BC at lower corners of domain based on BC setup
+        for(int n = 0; n < numcomp; ++n){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = jmin; j <= jmax; ++j){
+              for(int i = imin; i <= imax; ++i){
+                dest(i,j,k,n) = dest(ilo+(ilo-i)-1,j,k,n);
+              }
+            }
+          }
+        }
+      }
+    }   
   }
 #endif
     ParallelDescriptor::Barrier();   

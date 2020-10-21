@@ -1,7 +1,11 @@
 module LCPFCT_module
 
+  use amrex_fort_module, only : amrex_real
 
   implicit none
+  
+  integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, mach = 5
+  real(amrex_real), parameter :: one3 = 1.d0/3.d0, one6 = 1.d0/6.d0, gma = 1.4_amrex_real, half = 0.5_amrex_real
   
   private
 
@@ -21,7 +25,7 @@ module LCPFCT_module
     &           vy,   vy_lo, vy_hi,      &
     &           flxx, fx_lo, fx_hi,      &
     &           flxy, fy_lo, fy_hi,      &
-    &           dx, dt, u, v                   ) 
+    &           dx, dt                   ) 
 
   use amrex_fort_module, only : amrex_real
   use amrex_mempool_module, only : bl_allocate, bl_deallocate
@@ -29,7 +33,7 @@ module LCPFCT_module
 
   integer, intent(in) :: level, nc, fct_step, rk, rk_max
   integer, intent(in) :: lo(3), hi(3)
-  real(amrex_real), intent(in) :: dx(2), dt, time, u, v
+  real(amrex_real), intent(in) :: dx(2), dt, time
   integer, intent(in) :: u0_lo(3), u0_hi(3)
   integer, intent(in) :: ucx_lo(3), ucx_hi(3)
   integer, intent(in) :: ucy_lo(3), ucy_hi(3)
@@ -52,13 +56,11 @@ module LCPFCT_module
 
   integer :: i, j, k, n
   integer :: ilo, ihi, jlo, jhi, klo, khi
-  real(amrex_real) :: dtdx, dtdy, coeff, dxdt, dydt
+  real(amrex_real) :: dtdx, dtdy, coeff, dxdt, dydt, velmod, ss
   integer :: ftx_lo(3), ftx_hi(3)
   integer :: fty_lo(3), fty_hi(3)
   integer :: ut_lo(3), ut_hi(3) 
 
-  integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
-  real(amrex_real), parameter :: one3 = 1.d0/3.d0, one6 = 1.d0/6.d0, gma = 1.4_amrex_real, half = 0.5_amrex_real
   real(amrex_real), dimension(:,:,:,:), pointer, contiguous :: fltx, flty, utemp, frin, frout
   real(amrex_real), dimension(:), pointer, contiguous :: umin, umax, flin, flout, temp
 
@@ -84,26 +86,18 @@ module LCPFCT_module
   else 
     coeff = 1.0_amrex_real
   endif
-  ! print*,"dx= ",dx(1), "dy= ",dx(2)
+
   dtdx = coeff*dt/dx(1)
   dtdy = coeff*dt/dx(2)
   dxdt = 1.0_amrex_real/dtdx
   dydt = 1.0_amrex_real/dtdy
 
   if(fct_step == 1) then
-    ! if(rk == 1) then
     call compute_con_flux(  level, nc, lo, hi,  & 
         &                 uold, u0_lo, u0_hi,       &
         &                 flxx, fx_lo, fx_hi,       &
-        &                 flxy, fy_lo, fy_hi, u, v  )
+        &                 flxy, fy_lo, fy_hi  )
     ! print*,"rk= ",rk,",dx(1)= ",dx(1),", from LCPFCT2D, fx_lo= ",fx_lo,", fx_hi= ",fx_hi
-    ! else
-    !   call compute_con_flux(  level, nc, lo, hi,  & 
-    !     &                 uout, uo_lo, uo_hi,       &
-    !     &                 flxx, fx_lo, fx_hi,       &
-    !     &                 flxy, fy_lo, fy_hi, u, v  )
-    ! print*,"rk(n1)= ",rk,",dx(1)= ",dx(1),", from LCPFCT2D, fx_lo= ",fx_lo,", fx_hi= ",fx_hi
-    ! endif
     ! Predictor step of FCT
     ! compute convected x and y values of the conserved quantities
     if(level == 0) then
@@ -119,16 +113,15 @@ module LCPFCT_module
     ! deciding which quantity is to be used for calculating fluxes in different rk steps
     if(rk == 1) then
       ut_lo = u0_lo;  ut_hi = u0_hi
-      call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),0,nc-1)
-      utemp = uold
+      call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),ro,pre)
+      utemp = uold(:,:,:,ro:pre)
     else
       ut_lo = uo_lo;  ut_hi = uo_hi
-      call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),0,nc-1)
-      utemp = uout
+      call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),ro,pre)
+      utemp = uout(:,:,:,ro:pre)
     endif
 
     do n = ro,roE ! do not update pressure here
-    ! do n = 0,nc-1 ! do not update pressure here
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -151,18 +144,6 @@ module LCPFCT_module
                 &      ", ", uout(i,j,k,rov), ", ", uout(i,j,k,roE), ", ", uout(i,j,k,pre) 
                 call exit(123)
             endif 
-            ! if(isnan(ucx(i,j,k,n))) then
-            !     print*,"location = (", i, ", ",j,"), Exiting..NaN found in ucx (convection update): ", ucx(i,j,k,ro)
-            !     call exit(123)
-            ! endif 
-            ! if(isnan(ucy(i,j,k,n))) then
-            !     print*,"location = (", i, ", ",j,"), Exiting..NaN found in ucy (convection update): ", ucy(i,j,k,ro) 
-            !     call exit(123)
-            ! endif 
-            ! if(isnan(uout(i,j,k,n))) then
-            !     print*,"location = (", i, ", ",j,"), Exiting..NaN found in uout (convection update): ", uout(i,j,k,ro)
-            !     call exit(123)
-            ! endif 
           enddo
         enddo
       enddo
@@ -192,17 +173,9 @@ module LCPFCT_module
     ftx_lo = fx_lo; ftx_hi = fx_hi
     fty_lo = fy_lo; fty_hi = fy_hi
 
-    call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),0,nc-2)
-    call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),0,nc-2)
-    ! call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),0,nc-1)
-    ! call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),0,nc-1)
+    call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),ro,roE)
+    call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),ro,roE)
 
-    ! call compute_diff_flux(  level, nc, dtdx, dtdy, lo, hi,  & 
-    !   &                 utemp, ut_lo, ut_hi,      &
-    !   &                 vx, vx_lo, vx_hi,        & 
-    !   &                 vy, vy_lo, vy_hi,        &
-    !   &                 fltx, ftx_lo, ftx_hi,    &
-    !   &                 flty, fty_lo, fty_hi     )
     call compute_diff_flux(  level, nc, dtdx, dtdy, lo, hi,  & 
       &                 uold, u0_lo, u0_hi,      &
       &                 vx, vx_lo, vx_hi,        & 
@@ -211,15 +184,13 @@ module LCPFCT_module
       &                 flty, fty_lo, fty_hi     )
 
     if(rk == rk_max) then
-      do n = 0,nc-2
-      ! do n = 0,nc-1
+      do n = ro,roE
         flxx(:,:,:,n)  = flxx(:,:,:,n) + fltx(:,:,:,n)
         flxy(:,:,:,n)  = flxy(:,:,:,n) + flty(:,:,:,n) 
       enddo
     endif
 
-    do n = 0,nc-2
-    ! do n = 0,nc-1    
+    do n = ro,roE  
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -237,7 +208,7 @@ module LCPFCT_module
 
     if(level > 0) then
       ! zero order extrapolation for end points
-      do n = 0,nc-2
+      do n = ro,roE
       ! do n = 0,nc-1
         do k = klo, khi
           do j = jlo, jhi
@@ -261,16 +232,14 @@ module LCPFCT_module
       &                 flty, fty_lo, fty_hi     )
 
     if(rk == rk_max) then
-      do n = 0,nc-2
-      ! do n = 0,nc-1
+      do n = ro,roE
         flxx(:,:,:,n)  = flxx(:,:,:,n) + fltx(:,:,:,n)
         flxy(:,:,:,n)  = flxy(:,:,:,n) + flty(:,:,:,n) 
       enddo
     endif
 
     ! update source terms and store results (ro^l) in uout
-    do n = 0,nc-2
-    ! do n = 0,nc-1
+    do n = ro,roE
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -288,8 +257,7 @@ module LCPFCT_module
 
     if(level > 0) then
       ! zero order extrapolation for end points (only for levels other than level 0)
-      do n = 0,nc-2
-      ! do n = 0,nc-1
+      do n = ro,roE
         do k = klo, khi
           do j = jlo, jhi
             uout(ilo-1,j,k,n) = uout(ilo,j,k,n); uout(ihi+1,j,k,n) = uout(ihi,j,k,n);
@@ -304,19 +272,17 @@ module LCPFCT_module
     call bl_deallocate(utemp)
     call bl_deallocate(fltx)
     call bl_deallocate(flty)
-    ! lower order solution works fine (same for x,y propagation)
+
   else
 
     ut_lo = uo_lo;  ut_hi = uo_hi
     ftx_lo = fx_lo; ftx_hi = fx_hi
     fty_lo = fy_lo; fty_hi = fy_hi
     ! allocate arrays for anti-diffusion stage
-    call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),0,nc-2)
-    call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),0,nc-2)
-    ! call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),0,nc-1)
-    ! call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),0,nc-1)    
-    call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),0,nc-1)
-    utemp = uout
+    call bl_allocate(fltx,ftx_lo(1),ftx_hi(1),ftx_lo(2),ftx_hi(2),ftx_lo(3),ftx_hi(3),ro,roE)
+    call bl_allocate(flty,fty_lo(1),fty_hi(1),fty_lo(2),fty_hi(2),fty_lo(3),fty_hi(3),ro,roE)
+    call bl_allocate(utemp,ut_lo(1),ut_hi(1),ut_lo(2),ut_hi(2),ut_lo(3),ut_hi(3),ro,pre)
+    utemp = uout(:,:,:,ro:pre)
 
     ! compute antidiffusive fluxes (these variables are stored again in fltx and flty) and do the 
     ! prelimiting step
@@ -339,20 +305,15 @@ module LCPFCT_module
       klo = lo(3);   khi = hi(3)
     endif
 
-    call bl_allocate(umin,0,nc-2)
-    call bl_allocate(umax,0,nc-2)
-    call bl_allocate(frin,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-2)
-    call bl_allocate(frout,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-2)
-    call bl_allocate(flin,0,nc-2)
-    call bl_allocate(flout,0,nc-2)
-    ! call bl_allocate(umin,0,nc-1)
-    ! call bl_allocate(umax,0,nc-1)
-    ! call bl_allocate(frin,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-1)
-    ! call bl_allocate(frout,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),0,nc-1)
-    ! call bl_allocate(flin,0,nc-1)
-    ! call bl_allocate(flout,0,nc-1)
+    call bl_allocate(umin,ro,roE)
+    call bl_allocate(umax,ro,roE)
+    call bl_allocate(frin,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),ro,roE)
+    call bl_allocate(frout,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),ro,roE)
+    call bl_allocate(flin,ro,roE)
+    call bl_allocate(flout,ro,roE)
+
     ! Flux correction procedure (steps A, C-F in Devore)
-    do n = 0,nc-2
+    do n = ro,roE
     ! do n = 0,nc-1
       do k = lo(3), hi(3)
         do j = jlo, jhi
@@ -373,10 +334,14 @@ module LCPFCT_module
               frout(i,j,k,n) = (utemp(i,j,k,n) - umin(n))/(1E-16_amrex_real + flout(n))
 
             if(isnan(frin(i,j,k,n))) then
+             ! .and. n == 1 .or. (i == -1 .and. j == -1) .or. (i == -1 .and. j == 128)) then
                 print*,"location = (", i, ", ",j,"), Exiting..NaN found in frin (step C): ", &
                 &       "n= ", n, ", flin= ", flin(n), ", frin= ", frin(i,j,k,ro), ", ", frin(i,j,k,rou), &
-                &      ", ", frin(i,j,k,rov), ", ", frin(i,j,k,roE) 
-                call exit(123)
+                &      ", ", frin(i,j,k,rov), ", ", frin(i,j,k,roE),", umin = ", umin(n), ", umax= ", umax(n), &
+                &       ", utemp= ", uout(i,j,k,n), uout(i,j-1,k,n), uout(i-1,j,k,n), uout(i+1,j,k,n), uout(i,j+1,k,n)
+                ! if(isnan(frin(i,j,k,n))) then
+                  call exit(123)
+                ! endif
             endif 
             if(isnan(frout(i,j,k,n))) then
                 print*,"location = (", i, ", ",j,"), Exiting..NaN found in frout (step C): ", &
@@ -389,7 +354,7 @@ module LCPFCT_module
       enddo
     enddo
 
-    call bl_allocate(temp,0,nc-2)
+    call bl_allocate(temp,ro,roE)
     ! call bl_allocate(temp,0,nc-1)
     if(level == 0) then
       ilo = lo(1); ihi = hi(1)+1
@@ -401,8 +366,7 @@ module LCPFCT_module
       klo = lo(3);   khi = hi(3)
     endif
     ! calculate the corrected fluxes before updating the conserved variables
-    do n = 0,nc-2
-    ! do n = 0,nc-1
+    do n = ro,roE
       ! update fluxes at faces whose normals are in x-direction (fltx)
       do k = klo, khi
         do j = jlo, jhi
@@ -443,8 +407,7 @@ module LCPFCT_module
       klo = lo(3);   khi = hi(3)
     endif
       ! update fluxes at faces whose normals are in y-direction (flty)
-    do n = 0,nc-2
-    ! do n = 0,nc-1
+    do n = ro,roE
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -485,8 +448,7 @@ module LCPFCT_module
       klo = lo(3);   khi = hi(3)
     endif
 
-    do n = 0,nc-2
-    ! do n = 0,nc-1
+    do n = ro,roE
       do k = klo,khi
         do j = jlo,jhi
           do i = ilo,ihi
@@ -497,18 +459,22 @@ module LCPFCT_module
       enddo
     enddo
 
-    ! update pressure
+    ! update pressure and entropy
     do k = klo,khi
       do j = jlo,jhi
         do i = ilo,ihi
           uout(i,j,k,pre) = (gma-1)*( uout(i,j,k,roE)                       &
           &               -  half*( (uout(i,j,k,rou)**2 + uout(i,j,k,rov)**2)/uout(i,j,k,ro) ) )
+
+          ss = sqrt(gma*uout(i,j,k,pre)/uout(i,j,k,ro))
+          velmod = sqrt( (uout(i,j,k,rou)/uout(i,j,k,ro))**2 + (uout(i,j,k,rov)/uout(i,j,k,ro))**2 )
+          uout(i,j,k,mach) = velmod/ss
         enddo
       enddo
     enddo
     ! extrapolate to end points (zero-order extrapolation)
     if(level > 0) then
-      do n = 0,nc-1
+      do n = ro,mach
         do k = klo,khi
           do j = uo_lo(2)+1,uo_hi(2)-1
             uout(uo_lo(1),j,k,n) = uout(uo_lo(1)+1,j,k,n)
@@ -531,12 +497,10 @@ module LCPFCT_module
 
     ! scale fluxes by time and area
     if(rk == rk_max) then
-      ! flxx(:,:,:,roE) = 0.0_amrex_real
-      flxx(:,:,:,pre) = 0.0_amrex_real
-      ! flxy(:,:,:,roE) = 0.0_amrex_real
-      flxy(:,:,:,pre) = 0.0_amrex_real
-      ! do n = 0,nc-3
-      do n = 0,nc-2
+      flxx(:,:,:,pre:mach) = 0.0_amrex_real
+      flxy(:,:,:,pre:mach) = 0.0_amrex_real
+
+      do n = ro,roE
         ! scale x-fluxes
         do k = fx_lo(3), fx_hi(3)
           do j = fx_lo(2), fx_hi(2)

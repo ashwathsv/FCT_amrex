@@ -45,12 +45,47 @@ AmrCoreAdv::AmrCoreAdv ()
 
     bcs.resize(ncomp);
 
+    Print() << "probtag= " << probtag << "\n";
+
     //  Set periodic BCs in y-direction
-    for (int n = 0; n < ncomp; ++n){
-        for (int dir = 0; dir <= 1; ++dir){
-            bcs[n].setLo(dir, BCType::ext_dir);
-            bcs[n].setHi(dir, BCType::ext_dir);
+    if(probtag == 1){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::foextrap);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::foextrap);            
         }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+    }else if(probtag == 2){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::reflect_even);
+            bcs[n].setHi(1, BCType::reflect_even);            
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+        bcs[rou].setHi(0, BCType::reflect_odd);
+        bcs[rov].setLo(1, BCType::reflect_odd);
+        bcs[rov].setHi(1, BCType::reflect_odd);
+    }else if(probtag == 3 || probtag == 4){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::reflect_even);
+            bcs[n].setHi(1, BCType::foextrap);            
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+        bcs[rov].setLo(1, BCType::reflect_odd);
+        bcs[rov].setHi(1, BCType::reflect_odd);        
+    }else if(probtag == 5){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::foextrap);            
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+        bcs[rov].setLo(1, BCType::reflect_odd);        
     }
 
     // stores fluxes at coarse-fine interface for synchronization
@@ -93,6 +128,34 @@ AmrCoreAdv::ReadParameters ()
     pp.query("cfl", cfl);
         pp.query("do_reflux", do_reflux);
     }
+
+    {
+        ParmParse pp("prob");
+        
+        pp.get("p2",p2);
+        pp.get("p1",p1);
+        pp.get("ro2",ro2);
+        pp.get("ro1",ro1);
+        pp.get("u2",u2);
+        pp.get("u1",u1);
+        pp.get("v2",v2);
+        pp.get("v1",v1);
+        pp.query("rad_blast",rad_bw);
+        pp.get("probtag",probtag);                  
+    }
+
+    {
+        ParmParse pp("aux");
+        
+        pp.query("nprobes",nprobes);
+        if(nprobes > 0){
+            pp.getarr("iprobes", iprobe);
+            pp.getarr("jprobes", jprobe);
+            if(iprobe.size() != nprobes || jprobe.size() != nprobes){
+                amrex::Error("Coorodinate vector of probes does not equal number of probes");
+            }
+        }               
+    }
 }
 
 // initializes multilevel data
@@ -106,28 +169,37 @@ AmrCoreAdv::InitData ()
         InitFromScratch(time);
         ParallelDescriptor::Barrier();
         AverageDown();
+        ParallelDescriptor::Barrier();
 
         if (chk_int > 0) {
             WriteCheckpointFile();
         }
+
+        if (plot_int > 0) {
+            WritePlotFile();
+        }
+        
+        if(nprobes > 0){
+            AmrCoreAdv::GetProbeDets();
+        }
+        AmrCoreAdv::WriteProbeFile(0, 0.0, 0);
     }
     else {
         // restart from a checkpoint
         ReadCheckpointFile();
+
+        if(nprobes > 0){
+            AmrCoreAdv::GetProbeDets();
+        }
     }
 
-    BoxArray ba = phi_new[0].boxArray();
-    const DistributionMapping& dm = phi_new[0].DistributionMap();
+    // BoxArray ba = phi_new[0].boxArray();
+    // const DistributionMapping& dm = phi_new[0].DistributionMap();
     // exact.define(ba,dm,6,0);
     // // err.define(ba,dm,3,0);
     // MultiFab::Copy(exact,phi_new[0],0,0,3,0);
     // MultiFab::Copy(exact,phi_new[0],0,3,3,0);
     // MultiFab::Subtract(exact, exact,0,3,3,0);
-    if (plot_int > 0) {
-        WritePlotFile();
-        // WriteErrFile();
-    }
-    Print(myproc) << "rank= " << myproc << "reached end of initdata()" << "\n";
     ParallelDescriptor::Barrier();
 }
 
@@ -205,21 +277,6 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     int myproc = ParallelDescriptor::MyProc();
     // Print(myproc) << "rank= " << myproc << ", entered MakeNewLevelFromScratch" << "\n";
     // Real ro2, ro1, u2, u1, v2, v1, p, xw, yw;
-    {
-        ParmParse pp("prob");
-        pp.query("probtag",probtag);
-        if(probtag == 6){
-            pp.get("xcm",xcm);
-            pp.get("ycm",ycm);
-            pp.get("alpha",alpha);
-            pp.get("Mach_fs",Mach_fs);
-            pp.get("rofs",rofs);
-            pp.get("Tfs",Tfs);
-            pp.get("R",R);
-            pp.get("sigma",sigma);
-            pp.get("beta",beta);                   
-        }
-    }
 
     phi_new[lev].define(ba, dm, ncomp, nghost);
     phi_old[lev].define(ba, dm, ncomp, nghost);
@@ -249,14 +306,14 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         FArrayBox& mfab = state[mfi];
         Array4<Real> const& a = mfab.array();
 
-        AmrCoreAdv::initVortex(lev,box,a,geom[lev]);
+        AmrCoreAdv::initBlastWave(lev,box,a,geom[lev]);
     }
     ParallelDescriptor::Barrier();
     if (lev == 0) {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
     }
     else {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
@@ -264,19 +321,9 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         phi_new[lev].FillBoundary(geom[lev].periodicity());
         AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
     }
-
-    // MultiFab& phi = phi_new[lev];
-    // for (MFIter mfi(phi); mfi.isValid(); ++mfi)
-    // {
-    //     const Box& box = mfi.validbox();
-    //     //  Function to print results
-    //     FArrayBox& mfab = phi[mfi];
-    //     Array4<Real> const& arr = mfab.array();
-    //     WriteTxtFileInit(lev, box, arr, istep[lev], geom[lev]);
-
-    // }
-
     ParallelDescriptor::Barrier();
+    ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", reached end of MakeNewLevelFromScratch()" << "\n";
 }
 
 // tag all cells for refinement
@@ -286,6 +333,7 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 {
     int myproc = ParallelDescriptor::MyProc();
     // Print(myproc) << "rank= " << myproc << ", lev= " << lev << ", entering ErrorEst()" << "\n";
+    ParallelDescriptor::Barrier();
     static bool first = true;
     // static Vector<Real> tagfrac;
     static Real tagfrac = 0.1;
@@ -312,14 +360,33 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
     const Real* prob_lo = geom[lev].ProbLo();
 
     const MultiFab& state = phi_new[lev];
-    int nc = phi_new[lev].nComp();
-    Real roinf = rofs;
+    int comp_lo = ro;
+    int comp_hi = pre;
+    Real maxgradpx = 0.0, maxgradpy = 0.0, gradpxtemp, gradpytemp;
 
 #ifdef _OPENMP
 #pragma omp parallel
 #endif
     {
         Vector<int>  itags;
+
+        for(MFIter mfi(state, true); mfi.isValid(); ++mfi){
+            const Box& tmpbox  = mfi.validbox();
+            Array4<Real const> const& a = state[mfi].const_array();
+
+            gradpxtemp = get_gradp(lev, tmpbox, a, 0);
+            if(fabs(gradpxtemp) > fabs(maxgradpx)){
+                maxgradpx = gradpxtemp;
+            }
+
+            gradpytemp = get_gradp(lev, tmpbox, a, 1);
+            if(fabs(gradpytemp) > fabs(maxgradpy)){
+                maxgradpy = gradpytemp;
+            }
+        }
+    // Get global maximum of pressure gradient (use this as criterion for refinement)
+    ParallelDescriptor::ReduceRealMax(maxgradpx);
+    ParallelDescriptor::ReduceRealMax(maxgradpy);
 
     for (MFIter mfi(state,true); mfi.isValid(); ++mfi)
     {
@@ -344,7 +411,8 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
             BL_TO_FORTRAN_3D(state[mfi]),
             &tagval, &clearval,
             AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
-            AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &nc, &roinf, &tagfrac);
+            AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, &maxgradpx, &maxgradpy,
+            &tagfrac);
         //
         // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags
@@ -352,7 +420,9 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
         tagfab.tags_and_untags(itags, validbox);
     }
     }
+    // Print(myproc) << "rank= " << myproc << ", reached end of ErrorEst(b Barrier)" << "\n";
     ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", reached end of ErrorEst()" << "\n";
 }
 
 // set covered coarse cells to be the average of overlying fine cells
@@ -471,6 +541,7 @@ AmrCoreAdv::GetData (int lev, Real time, Vector<MultiFab*>& data, Vector<Real>& 
 void
 AmrCoreAdv::Evolve ()
 {
+    int myproc = ParallelDescriptor::MyProc();
     Real cur_time = t_new[0];
     int last_plot_file_step = 0;
 
@@ -488,7 +559,8 @@ AmrCoreAdv::Evolve ()
 
         amrex::Print() << "Coarse STEP " << step+1 << " ends." << " TIME = " << cur_time
                        << " DT = " << dt[0]  << std::endl;
-        amrex::Print() << "Max ro= " << phi_new[0].norm0(0) << "\n";
+        amrex::Print() << "Max mach= " << phi_new[0].norm0(mach) << "\n";
+        // Print(myproc) << "rank= " << myproc << ", does phi_new have NaNs? " << phi_new[0].contains_nan() << "\n";
 
 	// sync up time
 	for (lev = 0; lev <= finest_level; ++lev) {
@@ -500,6 +572,7 @@ AmrCoreAdv::Evolve ()
 	    WritePlotFile();
         // WriteErrFile();
 	}
+    AmrCoreAdv::WriteProbeFile(0, cur_time, step);
 
         if (chk_int > 0 && (step+1) % chk_int == 0) {
             WriteCheckpointFile();
@@ -516,8 +589,8 @@ AmrCoreAdv::Evolve ()
 	if (cur_time >= stop_time - 1.e-6*dt[0]) break;
     }
 
-    if (plot_int > 0 && istep[0] > last_plot_file_step) {
-	   WritePlotFile();
+    if (chk_int > 0) {
+	   // WritePlotFile();
        WriteCheckpointFile();
        // WriteErrFile();
     }
@@ -554,7 +627,6 @@ AmrCoreAdv::ComputeDt ()
     dt[0] = dt_0;
     for (int lev = 1; lev <= finest_level; ++lev) {
     dt[lev] = dt[lev-1] / nsubsteps[lev];
-    // Print() << "lev = " << lev << ", dt = " << dt[lev] <<"\n";
     }
     
     for (int lev = 0; lev <= finest_level; ++lev) {
@@ -690,9 +762,9 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
 	   }
 
         ParallelDescriptor::Barrier();
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
 
 	   if (do_reflux)
 	   {
@@ -743,6 +815,7 @@ void
 AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 {
     int myproc = ParallelDescriptor::MyProc();
+    // Print(myproc) << "rank= " << myproc << "entered Advance()" << "\n";
     constexpr int num_grow = 4;
     int ngrow = num_grow;
 
@@ -781,16 +854,45 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     MultiFab Sconvx(grids[lev], dmap[lev], S_new.nComp(), num_grow);
     MultiFab Sconvy(grids[lev], dmap[lev], S_new.nComp(), num_grow);
 
+    // Print(myproc) << "rank= " << myproc << ", does S_new contains nan before FillPatch? " << S_new.contains_nan() 
+    // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << ", max p = " 
+    // << S_new.norm0(pre) << "\n";
+
     ParallelDescriptor::Barrier();
     if(lev == 0){
         FillPatch(lev, time, Sconvx, 0, Sconvx.nComp());
         FillPatch(lev, time, Sconvy, 0, Sconvy.nComp());
         FillPatch(lev, time, S_new, 0, S_new.nComp());
+
+        S_new.FillBoundary();
+        S_new.FillBoundary(geom1.periodicity());
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        Sconvx.FillBoundary();
+        Sconvx.FillBoundary(geom1.periodicity());
+        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+        Sconvy.FillBoundary();
+        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+        Sconvy.FillBoundary(geom1.periodicity());
     }else{
         FillCoarsePatch(lev, time, Sconvx, 0, Sconvx.nComp());
         FillCoarsePatch(lev, time, Sconvy, 0, Sconvy.nComp());
-        FillCoarsePatch(lev, time, S_new, 0, S_new.nComp());       
+        FillCoarsePatch(lev, time, S_new, 0, S_new.nComp());
+
+        S_new.FillBoundary();
+        S_new.FillBoundary(geom1.periodicity());
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        Sconvx.FillBoundary();
+        Sconvx.FillBoundary(geom1.periodicity());
+        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+        Sconvy.FillBoundary();
+        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+        Sconvy.FillBoundary(geom1.periodicity());       
     }
+    // Print(myproc) << "rank= " << myproc << ", does S_new contains nan after FillPatch? " << S_new.contains_nan() 
+    // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << ", max p = " 
+    // << S_new.norm0(pre) << "\n";
+
+    ParallelDescriptor::Barrier();
 
 #ifdef _OPENMP
 #pragma omp parallel
@@ -861,6 +963,10 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                 }
             }//for MFIter(mfi)
             ParallelDescriptor::Barrier();
+            // if(S_new.contains_nan()){
+                // Print() << "rank= " << myproc << ", does S_new contains nan before BC? " << S_new.contains_nan() 
+                // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << "\n";
+            // }
             if (lev == 0){
                     S_new.FillBoundary();
                     AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
@@ -883,7 +989,19 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     Sconvy.FillBoundary(geom1.periodicity());
                     AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
             }
-        // Print(myproc) << "rank= " << myproc << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+            // Check if density/pressure/Mach number become negative
+            if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0){
+                Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+                Print() << "min ro= " << S_new.min(ro,ngrow) 
+                        << ", min pre= " << S_new.min(pre,ngrow) << "\n";
+                amrex::Error("Pressure/density is negative, aborting...");
+            }
+            if(S_new.contains_nan() || Sconvx.contains_nan() || Sconvy.contains_nan()){
+                Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+                Print() << "S_new contains nan after BC? " << S_new.contains_nan() 
+                << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << "\n";
+                amrex::Error("NaN value found in conserved variables, aborting...");
+            }
         ParallelDescriptor::Barrier();
         }//for(fct_step)
     }//for(rk)

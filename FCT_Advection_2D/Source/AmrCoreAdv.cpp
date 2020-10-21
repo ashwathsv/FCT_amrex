@@ -611,7 +611,7 @@ AmrCoreAdv::ComputeDt ()
     for (int lev = 0; lev <= finest_level; ++lev) {
     dt[lev] = dt[finest_level];
     }
-    Print(myproc) << "rank= " << myproc << ", dt = " << dt[0] <<"\n";
+    // Print(myproc) << "rank= " << myproc << ", dt = " << dt[0] <<"\n";
 }
 
 // compute dt from CFL considerations

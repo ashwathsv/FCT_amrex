@@ -13,5 +13,6 @@ err*
 err*/
 Outputs*
 Outputs*/*
-
+test_cpu_fill_noreflectbc.cpp
+*.visit
 

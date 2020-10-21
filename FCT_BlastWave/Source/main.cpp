@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 	amr_core_adv.InitData();
 
         // advance solution to final time
-	// amr_core_adv.Evolve();
+	amr_core_adv.Evolve();
 	
         // wallclock time
 	Real end_total = amrex::second() - strt_total;
