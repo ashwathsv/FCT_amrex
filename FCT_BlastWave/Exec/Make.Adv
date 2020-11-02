@@ -1,5 +1,5 @@
 AMREX_HOME ?= /Users/ashwathsv/amrex
-ADR_DIR  ?= /Users/ashwathsv/FCT_amrex/FCT_Blastwave
+ADR_DIR  ?= /Users/ashwathsv/FCT_amrex/FCT_BlastWave
 
 TOP := $(ADR_DIR)
 

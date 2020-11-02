@@ -71,8 +71,8 @@ AmrCoreAdv::AmrCoreAdv ()
         for(int n = 0; n < ncomp; ++n){
             bcs[n].setLo(0, BCType::reflect_even);
             bcs[n].setLo(1, BCType::reflect_even);
-            bcs[n].setHi(0, BCType::reflect_even);
-            bcs[n].setHi(1, BCType::foextrap);            
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::reflect_even);            
         }
         bcs[rou].setLo(0, BCType::reflect_odd);
         bcs[rov].setLo(1, BCType::reflect_odd);
@@ -86,8 +86,60 @@ AmrCoreAdv::AmrCoreAdv ()
         }
         bcs[rou].setLo(0, BCType::reflect_odd);
         bcs[rov].setLo(1, BCType::reflect_odd);        
+    }else if(probtag == 6){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::ext_dir);            
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+        bcs[rov].setLo(1, BCType::reflect_odd);       
+    }else if(probtag == 7){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::ext_dir);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::ext_dir);            
+        }
+        bcs[rov].setLo(1, BCType::reflect_odd);         
     }
-
+    else if(probtag == 8){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::ext_dir);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::reflect_even);            
+        }
+        bcs[rov].setLo(1, BCType::reflect_odd); 
+        bcs[rov].setHi(1, BCType::reflect_odd);        
+    }
+    else if(probtag == 9){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::ext_dir);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::ext_dir);            
+        }
+        bcs[rov].setLo(1, BCType::reflect_odd);        
+    }
+    else if(probtag == 10){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::ext_dir);
+            bcs[n].setLo(1, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::foextrap);            
+        }
+        bcs[rov].setLo(1, BCType::reflect_odd);        
+    }    
+    else if(probtag == 11){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::ext_dir);
+            bcs[n].setLo(1, BCType::foextrap);
+            bcs[n].setHi(0, BCType::foextrap);
+            bcs[n].setHi(1, BCType::foextrap);            
+        }     
+    }  
     // stores fluxes at coarse-fine interface for synchronization
     // this will be sized "nlevs_max+1"
     // NOTE: the flux register associated with flux_reg[lev] is associated
@@ -178,7 +230,7 @@ AmrCoreAdv::InitData ()
         if (plot_int > 0) {
             WritePlotFile();
         }
-        
+
         if(nprobes > 0){
             AmrCoreAdv::GetProbeDets();
         }
@@ -226,6 +278,14 @@ AmrCoreAdv::MakeNewLevelFromCoarse (int lev, Real time, const BoxArray& ba,
     }
 
     FillCoarsePatch(lev, time, phi_new[lev], 0, ncomp);
+
+    phi_new[lev].FillBoundary();
+    phi_new[lev].FillBoundary(geom[lev].periodicity());
+    AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
+
+    phi_old[lev].FillBoundary();
+    phi_old[lev].FillBoundary(geom[lev].periodicity());
+    AmrCoreAdv::FillDomainBoundary(phi_old[lev],geom[lev],bcs,time);
 }
 
 // Remake an existing level using provided BoxArray and DistributionMapping and
@@ -245,8 +305,20 @@ AmrCoreAdv::RemakeLevel (int lev, Real time, const BoxArray& ba,
 
     FillPatch(lev, time, new_state, 0, ncomp);
 
+    new_state.FillBoundary();
+    new_state.FillBoundary(geom[lev].periodicity());
+    AmrCoreAdv::FillDomainBoundary(new_state,geom[lev],bcs,time);
+
     std::swap(new_state, phi_new[lev]);
     std::swap(old_state, phi_old[lev]);
+
+    phi_new[lev].FillBoundary();
+    phi_new[lev].FillBoundary(geom[lev].periodicity());
+    AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
+
+    phi_old[lev].FillBoundary();
+    phi_old[lev].FillBoundary(geom[lev].periodicity());
+    AmrCoreAdv::FillDomainBoundary(phi_old[lev],geom[lev],bcs,time);
 
     t_new[lev] = time;
     t_old[lev] = time - 1.e200;
@@ -308,20 +380,23 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
 
         AmrCoreAdv::initBlastWave(lev,box,a,geom[lev]);
     }
+    // Print(myproc) << "rank= " << myproc << ", does phi_new have NaNs (before BC)? " << phi_new[lev].contains_nan() << "\n";
     ParallelDescriptor::Barrier();
     if (lev == 0) {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
     }
     else {
         FillPatch(lev, time, phi_new[lev], 0, phi_new[lev].nComp());
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
     }
-    ParallelDescriptor::Barrier();
+    // Print(myproc) << "rank= " << myproc << ", does phi_new have NaNs (after BC)? " << phi_new[lev].contains_nan() << "\n";
+    Print() << "min(ro)= " << phi_new[lev].min(ro,4) << ", min(pre)= " << phi_new[lev].min(pre,4)
+    << ", min(roE)= " << phi_new[lev].min(roE,4) << ", min(mach)= " << phi_new[lev].min(mach,4) << "\n";
     ParallelDescriptor::Barrier();
     // Print(myproc) << "rank= " << myproc << ", reached end of MakeNewLevelFromScratch()" << "\n";
 }
@@ -590,9 +665,12 @@ AmrCoreAdv::Evolve ()
     }
 
     if (chk_int > 0) {
-	   // WritePlotFile();
        WriteCheckpointFile();
        // WriteErrFile();
+    }
+
+    if(plot_int > 0){
+        WritePlotFile();
     }
 }
 
@@ -764,7 +842,7 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
         ParallelDescriptor::Barrier();
         phi_new[lev].FillBoundary();
         phi_new[lev].FillBoundary(geom[lev].periodicity());
-        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+        AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
 
 	   if (do_reflux)
 	   {
@@ -783,7 +861,7 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
 
             ParallelDescriptor::Barrier();
             phi_new[lev].FillBoundary();
-            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
             phi_new[lev].FillBoundary(geom[lev].periodicity());
 	   }
         ParallelDescriptor::Barrier();
@@ -797,12 +875,12 @@ AmrCoreAdv::timeStep (int lev, Real time, int iteration, int step)
         }//for(MFIter)
         if(lev == 0){
             phi_new[lev].FillBoundary();
-            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
             phi_new[lev].FillBoundary(geom[lev].periodicity());
         }else{
             phi_new[lev].FillBoundary();
             phi_new[lev].FillBoundary(geom[lev].periodicity());
-            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs);
+            AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
         }
 
     }
@@ -866,12 +944,12 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
         S_new.FillBoundary();
         S_new.FillBoundary(geom1.periodicity());
-        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
         Sconvx.FillBoundary();
         Sconvx.FillBoundary(geom1.periodicity());
-        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs,time);
         Sconvy.FillBoundary();
-        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
         Sconvy.FillBoundary(geom1.periodicity());
     }else{
         FillCoarsePatch(lev, time, Sconvx, 0, Sconvx.nComp());
@@ -880,12 +958,12 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
         S_new.FillBoundary();
         S_new.FillBoundary(geom1.periodicity());
-        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
         Sconvx.FillBoundary();
         Sconvx.FillBoundary(geom1.periodicity());
-        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs,time);
         Sconvy.FillBoundary();
-        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
         Sconvy.FillBoundary(geom1.periodicity());       
     }
     // Print(myproc) << "rank= " << myproc << ", does S_new contains nan after FillPatch? " << S_new.contains_nan() 
@@ -969,31 +1047,32 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
             // }
             if (lev == 0){
                     S_new.FillBoundary();
-                    AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
                     S_new.FillBoundary(geom1.periodicity());
                     Sconvx.FillBoundary();
-                    AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs,time);
                     Sconvx.FillBoundary(geom1.periodicity());
                     Sconvy.FillBoundary();
-                    AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
                     Sconvy.FillBoundary(geom1.periodicity());
             }
             else{
                     S_new.FillBoundary();
                     S_new.FillBoundary(geom1.periodicity());
-                    AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
                     Sconvx.FillBoundary();
                     Sconvx.FillBoundary(geom1.periodicity());
-                    AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs,time);
                     Sconvy.FillBoundary();
                     Sconvy.FillBoundary(geom1.periodicity());
-                    AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs);
+                    AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
             }
             // Check if density/pressure/Mach number become negative
-            if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0){
+            if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0 || S_new.min(mach,ngrow) < 0.0 || S_new.min(roE,ngrow) < 0.0){
                 Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
                 Print() << "min ro= " << S_new.min(ro,ngrow) 
                         << ", min pre= " << S_new.min(pre,ngrow) << "\n";
+                WritePlotFile();
                 amrex::Error("Pressure/density is negative, aborting...");
             }
             if(S_new.contains_nan() || Sconvx.contains_nan() || Sconvy.contains_nan()){
@@ -1008,13 +1087,13 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
     if (lev == 0){
         S_new.FillBoundary();
-        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
         S_new.FillBoundary(geom1.periodicity());
     }
     else{
         S_new.FillBoundary();
         S_new.FillBoundary(geom1.periodicity());
-        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs);
+        AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
     }    
 
     }

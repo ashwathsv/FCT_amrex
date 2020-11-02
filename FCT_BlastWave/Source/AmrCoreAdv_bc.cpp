@@ -19,7 +19,7 @@ using namespace amrex;
 // ---------------------------------------------------------------------------
 // Function to fill physical domain boundary (fill ghost cells)
 void 
-AmrCoreAdv::FillDomainBoundary (MultiFab& phi, const Geometry& geom, const Vector<BCRec>& bc)
+AmrCoreAdv::FillDomainBoundary (MultiFab& phi, const Geometry& geom, const Vector<BCRec>& bc, Real cur_time)
 {
     BL_PROFILE_VAR("AmrCoreAdv::FillDomainBoundary()", dombndry);
     int myproc = ParallelDescriptor::MyProc();
@@ -42,19 +42,20 @@ AmrCoreAdv::FillDomainBoundary (MultiFab& phi, const Geometry& geom, const Vecto
     }
     else
     {
-        // CpuBndryFuncFab cpu_bndry_func(outletBC_riemann);;
+        CpuBndryFuncFab cpu_bndry_func(outletBC_partialwall);;
         // CpuBndryFuncFab cpu_bndry_func(outletBC_hoextrap);;
-        CpuBndryFuncFab cpu_bndry_func(nullptr);;
+        // CpuBndryFuncFab cpu_bndry_func(nullptr);;
         PhysBCFunct<CpuBndryFuncFab> physbcf(geom, bc, cpu_bndry_func);
-        physbcf(phi, 0, phi.nComp(), phi.nGrowVect(), 0.0, 0);
+        physbcf(phi, 0, phi.nComp(), phi.nGrowVect(), cur_time, 0);
         // Print(myproc) << "rank= " << myproc << ", reached CpuBndryFuncFab()" << "\n";
     }
 #endif
 }
 
-
+// This is a boundary condition where part of the boundary is wall 
+// and part is outlet (first order extrapolation)
 void 
-AmrCoreAdv::outletBC_riemann (Box const& bx, Array4<Real> const& dest,
+AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
                             const int dcomp, const int numcomp,
                             GeometryData const& geom, const Real time,
                             const BCRec* bcr, const int bcomp,
@@ -64,9 +65,22 @@ AmrCoreAdv::outletBC_riemann (Box const& bx, Array4<Real> const& dest,
     const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, mach = 5;
     const Real gamma = 1.4;
 
-    Real pfs = 0.0;
+    Real pfs = 0.0, roin = 0.0, pin = 0.0, uin = 0.0, vin = 0.0, ltube = 0.0, lwall = 0.0, loffset = 0.0, inflow_time = 1000.0;
+    int ncellw = 5, tagprob;
     ParmParse pp("prob");
+    pp.get("p2",pin);
+    pp.get("ro2",roin);
+    pp.get("u2",uin);
+    pp.get("v2",vin);
     pp.get("pfs",pfs);
+    pp.get("probtag",tagprob);
+
+    pp.query("ncellw",ncellw);
+
+    Real vmodin, ptot, alf, ssin, riem1;
+
+    // Print() << "pin = " << pin << ", roin= " << roin << ", uin= " << uin << ", vin= " << vin
+            // << "\n";
 
     const auto lo = amrex::lbound(bx);
     const auto hi = amrex::ubound(bx);
@@ -83,12 +97,44 @@ AmrCoreAdv::outletBC_riemann (Box const& bx, Array4<Real> const& dest,
     const int ilo = domlo.x;
     const int ihi = domhi.x;
 
+    Real xlo = geom.ProbLo(0);
+    Real xhi = geom.ProbHi(0);
+    Real dx  = geom.CellSize(0);
+
+    Real lenwall = xlo + (ncellw - 0.5)*dx;
+    // Print() << "lenwall= " << lenwall << "\n";
 #if AMREX_SPACEDIM >= 2
     const int js = std::max(qlo.y, domlo.y);
     const int je = std::min(qhi.y, domhi.y);
     const int jlo = domlo.y;
     const int jhi = domhi.y;
+
+    Real ylo = geom.ProbLo(1);
+    Real yhi = geom.ProbHi(1);
+    Real dy  = geom.CellSize(1);
 #endif
+
+    if(tagprob == 9 || tagprob == 10 || tagprob == 11){
+      vmodin = std::sqrt(std::pow(uin,2.0) + std::pow(vin,2.0));
+      ptot = pin + (0.5*roin*std::pow(vmodin,2.0));
+      alf = 0.0;
+      pp.query("alf",alf);
+      ssin = std::sqrt(gamma*pin/roin);
+      riem1 = vmodin + (2.0*ssin/(gamma-1));    
+    }
+
+    if(tagprob == 10 || tagprob == 11){
+      // tube is 5 cells long in y-direction and wall is 2 cells aove the tube
+      ltube = ylo + 5.0*dy;
+      lwall = 2.0*dy;
+      loffset = 5.0*dy;
+      pp.query("ltube",ltube); 
+      pp.query("lwall",lwall); 
+      pp.query("loffset",loffset);
+      inflow_time = 1000.0; 
+      pp.query("inflow_time",inflow_time); 
+      // Print(0) << "time= " << time << ", inflow_time= " << inflow_time << "\n";
+    }
 
     Array4<Real> q(dest);
     BCRec const& bc = bcr[pre];
@@ -98,221 +144,110 @@ AmrCoreAdv::outletBC_riemann (Box const& bx, Array4<Real> const& dest,
     if (lo.x < ilo) {
       const int imin = lo.x;
       const int imax = ilo-1;
-
       if (bc.lo(0) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int j = lo.y; j <= hi.y; ++j) {
-            //  First, calculate Mach number at i = ilo
-            Real vmod_ilo = std::sqrt( std::pow(dest(ilo,j,k,rou)/dest(ilo,j,k,ro),2.0) 
-                  + std::pow(dest(ilo,j,k,rov)/dest(ilo,j,k,ro),2.0) );
-            Real ss_ilo = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
-            dest(ilo,j,k,mach) = vmod_ilo/ss_ilo;
-
-            if(dest(ilo,j,k,mach) > 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
-              for (int i = imin; i <= imax; ++i) {
-                for (int n = 0; n < numcomp; ++n){
-                    dest(i,j,k,n) = dest(ilo,j,k,n);
-                }
-              }
-            }else{
-            // Subsonic outlet BC (based on Riemann invariants)
+        if(tagprob == 7){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = lo.y; j <= hi.y; ++j){
               for(int i = imin; i <= imax; ++i){
-                 dest(i,j,k,pre) = pinf;
-              }
-            // y-component of velocity, 1st Riemann invariant and entropy are set 
-            // based on the end cell value
-              Real yvel_ilo = dest(ilo,j,k,rov)/dest(ilo,j,k,ro);
-              Real ent_ilo = dest(ilo,j,k,pre)/(std::pow(dest(ilo,j,k,ro),gamma));
-              for(int i = imin; i <= imax; ++i){
-                dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_ilo, 1.0/gamma);
-              }
-              Real riem1 = vmod_ilo + 2.0*ss_ilo/(gamma-1);
-                for(int i = imin; i <= imax; ++i){
-                    Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                    Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
-                    if(vmod_loc < 0.0){
-                    	vmod_loc = 0.0;
-                      // Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
-                      // << "i = " << i << ", j= " << j << "\n";
-                    } 
-                    Real xvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(yvel_ilo,2.0));
-                	if(std::isnan(xvel)){
-                		xvel = 0.0;
-                	}                      
-                    dest(i,j,k,rou) = dest(i,j,k,ro)*xvel;
-                    dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_ilo;
-                    dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                    + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-                    dest(i,j,k,mach) = vmod_loc/ss_loc;
-                  }
-
-                }
-                  // Print(myproc) << "rank= " << myproc << ", i = " << imax << ", j= " << j
-                  // << ", pre = " << dest(imax,j,k,pre) << "\n";
+                // first, set pressure
+                dest(i,j,k,pre) = dest(ilo,j,k,pre);
+                // next, set mass density
+                dest(i,j,k,ro) = roin*(std::pow(dest(ilo,j,k,pre)/pin,1.0/gamma));
+                // set momentum density
+                dest(i,j,k,rou) = roin*uin;
+                dest(i,j,k,rov) = roin*vin;
+                Real temp = std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0);
+                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1.0) + (0.5*temp/dest(i,j,k,ro));
+                dest(i,j,k,mach) = std::sqrt(temp)/dest(i,j,k,ro);
               }
             }
           }
-      }
-
-        if (hi.x > ihi) {
-            const int imin = ihi+1;
-            const int imax = hi.x;
-
-            if (bc.hi(0) == BCType::ext_dir) {
-              // Print(myproc) << "rank= " << myproc << ", pressure xlobc= " << bc.lo(0) 
-              // << ", pressure xhibc=" << bc.hi(0) << "\n";
-              Real pinf = pfs;
-              for (int k = lo.z; k <= hi.z; ++k) {
-                for (int j = lo.y; j <= hi.y; ++j) {
-                  //  First, calculate Mach number at i = ihi
-                  Real vmod_ihi = std::sqrt( std::pow(dest(ihi,j,k,rou)/dest(ihi,j,k,ro),2.0) 
-                        + std::pow(dest(ihi,j,k,rov)/dest(ihi,j,k,ro),2.0) );
-                  Real ss_ihi = std::sqrt(gamma*dest(ihi,j,k,pre)/dest(ihi,j,k,ro));
-                  dest(ihi,j,k,mach) = vmod_ihi/ss_ihi;
-
-                  if(dest(ihi,j,k,mach) >= 1.0){
-                    // supersonic BC is only 1st order extrapolation for all quantities
-                    for (int n = 0; n < numcomp; ++n){
-                    	for (int i = imin; i <= imax; ++i) {
-                          dest(i,j,k,n) = dest(ihi,j,k,n);
-                      }
-                    }
-                  }else{
-
-                    // Subsonic outlet BC (based on Riemann invariants)
-                    for(int i = imin; i <= imax; ++i){
-                      dest(i,j,k,pre) = pinf;
-                    }
-                    // y-component of velocity, 1st Riemann invariant and entropy are set 
-                    // based on the end cell value
-                    Real yvel_ihi = dest(ihi,j,k,rov)/dest(ihi,j,k,ro);
-                    Real ent_ihi = dest(ihi,j,k,pre)/(std::pow(dest(ihi,j,k,ro),gamma));
-                    for(int i = imin; i <= imax; ++i){
-                      dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_ihi, 1.0/gamma);
-                    }
-                    Real riem1 = vmod_ihi + (2.0*ss_ihi/(gamma-1));
-                    for(int i = imin; i <= imax; ++i){
-                      Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                      Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
-                      if(vmod_loc < 0.0){
-                      	vmod_loc = 0.0;
-                        // Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
-                        // << "i = " << i << ", j= " << j << "\n";
-                      } 
-                      Real xvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(yvel_ihi,2.0));
-                	  if(std::isnan(xvel)){
-                		xvel = 0.0;
-                	  }         
-                      dest(i,j,k,rou) = dest(i,j,k,ro)*xvel;
-                      dest(i,j,k,rov) = dest(i,j,k,ro)*yvel_ihi;
-                      dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                      + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-                      dest(i,j,k,mach) = vmod_loc/ss_loc;
-
-                      // Print(myproc) << "subsonic BC, rank= " << myproc << ", i= " << i << ", j= " << j
-                      // << ", ro= " << dest(i,j,k,ro) << ", rou= " << dest(i,j,k,rou)
-                      // << ", rov= " << dest(i,j,k,rov) << "yvel_ihi= " << yvel_ihi <<
-                      //  ", roE= " << dest(i,j,k,roE)
-                      // << ", pre= " << dest(i,j,k,pre) << ", mach= " << dest(i,j,k,mach) << "\n"; 
-                    }
-
-                  }
-
-                }
+        }
+      else if(tagprob == 8 || tagprob == 9){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = lo.y; j <= hi.y; ++j){
+              for(int i = imin; i <= imax; ++i){
+                // vmod, sstmp, riem2 calculated at i = ilo
+                Real vmod = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
+                Real sstmp = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
+                Real riem2 = vmod - (2.0*sstmp/(gamma-1));
+                // get mod of velocity at ghost cell uisng riem1 and riem2
+                // riem1 is calculated based on inlet conditions, riem2 from i = ilo cell
+                Real q = 0.5*(riem1 + riem2); // velmod at ghost cell
+                Real ss = 0.25*(gamma-1)*(riem1 - riem2); // sound speed at ghost cell
+                // First calculate mach number at ghost cells
+                dest(i,j,k,mach) = q/ss;
+                Real k1 = std::pow(1.0+(0.5*(gamma-1)*std::pow(dest(i,j,k,mach),2.0)), gamma/(gamma-1));
+                dest(i,j,k,pre) = ptot/k1;
+                dest(i,j,k,ro) = gamma*dest(i,j,k,pre)/std::pow(ss,2.0);
+                dest(i,j,k,rou) = dest(i,j,k,ro)*q*std::cos(alf);
+                dest(i,j,k,rov) = dest(i,j,k,ro)*q*std::sin(alf);
+                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1) 
+                              + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
               }
             }
-        }
+          }
+        } 
+      else if(tagprob == 10 || tagprob == 11){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = lo.y; j <= hi.y; ++j){
+              for(int i = imin; i <= imax; ++i){
+                Real y = ylo + (j + 0.5)*dy;
+                Real dist_off = (y + 0.5*dy) - (loffset);
+                Real dist_tube = (y + 0.5*dy) - (loffset + ltube);
+                Real dist_w1 = (y + 0.5*dy) - (loffset - lwall);
+                Real dist_w2 = (y + 0.5*dy) - (loffset + lwall);
+                if(dist_off > 0.0 && dist_tube <= 0.0 && time <= inflow_time){
+                  // vmod, sstmp, riem2 calculated at i = ilo
+                  Real vmod = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
+                  Real sstmp = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
+                  Real riem2 = vmod - (2.0*sstmp/(gamma-1));
+                  // get mod of velocity at ghost cell uisng riem1 and riem2
+                  // riem1 is calculated based on inlet conditions, riem2 from i = ilo cell
+                  Real q = 0.5*(riem1 + riem2); // velmod at ghost cell
+                  Real ss = 0.25*(gamma-1)*(riem1 - riem2); // sound speed at ghost cell
+                  // First calculate mach number at ghost cells
+                  dest(i,j,k,mach) = q/ss;
+                  Real k1 = std::pow(1.0+(0.5*(gamma-1)*std::pow(dest(i,j,k,mach),2.0)), gamma/(gamma-1));
+                  dest(i,j,k,pre) = ptot/k1;
+                  dest(i,j,k,ro) = gamma*dest(i,j,k,pre)/std::pow(ss,2.0);
+                  dest(i,j,k,rou) = dest(i,j,k,ro)*q*std::cos(alf);
+                  dest(i,j,k,rov) = dest(i,j,k,ro)*q*std::sin(alf);
+                  dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1) 
+                              + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                } 
+                else if(dist_off > 0.0 && dist_tube <= 0.0 && time > inflow_time){
+                  // dest(i,j,k,ro) = dest(ilo+(ilo-i)-1,j,k,ro);
+                  // dest(i,j,k,rov) = dest(ilo+(ilo-i)-1,j,k,rov);
+                  // dest(i,j,k,roE) = dest(ilo+(ilo-i)-1,j,k,roE);
+                  // dest(i,j,k,pre) = dest(ilo+(ilo-i)-1,j,k,pre);
+                  // dest(i,j,k,mach) = dest(ilo+(ilo-i)-1,j,k,mach);
+                  // dest(i,j,k,rou) = -dest(ilo+(ilo-i)-1,j,k,rov); 
+                  for(int n = 0; n < numcomp; ++n){
+                    dest(i,j,k,n) = q(ilo,j,k,n);
+                  }
+                }
+                else if( (dist_w1 > 0.0 && dist_off <= 0.0) || (dist_off > 0.0 && dist_w2 <= 0.0 && dist_tube > 0.0) ){
+                  // impose no-penetration wall BC
+                  dest(i,j,k,ro) = dest(ilo+(ilo-i)-1,j,k,ro);
+                  dest(i,j,k,rov) = dest(ilo+(ilo-i)-1,j,k,rov);
+                  dest(i,j,k,roE) = dest(ilo+(ilo-i)-1,j,k,roE);
+                  dest(i,j,k,pre) = dest(ilo+(ilo-i)-1,j,k,pre);
+                  dest(i,j,k,mach) = dest(ilo+(ilo-i)-1,j,k,mach);
+                  dest(i,j,k,rou) = -dest(ilo+(ilo-i)-1,j,k,rov);                
+                } else{
+                  for(int n = 0; n < numcomp; ++n){
+                    dest(i,j,k,n) = q(ilo,j,k,n);
+                  }
+                } 
+              }
+            }
+          }        
+        } 
+      }
+    }    
 
 #if AMREX_SPACEDIM >= 2
-
-    if (lo.y < jlo) {
-      const int jmin = lo.y;
-      const int jmax = jlo-1;
-
-      if (bc.lo(1) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int i = lo.x; i <= hi.x; ++i) {
-            //  First, calculate Mach number at j = jlo
-            Real vmod_jlo = std::sqrt(std::pow(dest(i,jlo,k,rou)/dest(i,jlo,k,ro),2.0) 
-                  + std::pow(dest(i,jlo,k,rov)/dest(i,jlo,k,ro),2.0));
-            Real ss_jlo = std::sqrt(gamma*dest(i,jlo,k,pre)/dest(i,jlo,k,ro));
-            dest(i,jlo,k,mach) = vmod_jlo/ss_jlo;
-
-            if(dest(i,jlo,k,mach) >= 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
-              for (int j = jmin; j <= jmax; ++j) {
-                for (int n = 0; n < numcomp; ++n){
-                    dest(i,j,k,n) = dest(i,jlo,k,n);
-                }
-              }
-            }else{
-            // Subsonic outlet BC (based on Riemann invariants)
-              for(int j = jmin; j <= jmax; ++j){
-                 dest(i,j,k,pre) = pinf;
-              }
-            // y-component of velocity, 1st Riemann invariant and entropy are set 
-            // based on the end cell value
-              Real xvel_jlo = dest(i,jlo,k,rou)/dest(i,jlo,k,ro);
-              Real ent_jlo = dest(i,jlo,k,pre)/(std::pow(dest(i,jlo,k,ro),gamma));
-              for(int j = jmin; j <= jmax; ++j){
-                dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_jlo, 1.0/gamma);
-              }
-              Real riem1 = vmod_jlo + 2.0*ss_jlo/(gamma-1);
-
-              for(int j = jmin; j <= jmax; ++j){
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
-                if(vmod_loc < 0.0){
-                	vmod_loc = 0.0;
-                  // Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
-                  //  << "i = " << i << ", j= " << j << "\n";
-                } 
-                Real yvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(xvel_jlo,2.0));
-                if(std::isnan(yvel)){
-                	yvel = 0.0;
-                }
-                dest(i,j,k,rou) = dest(i,j,k,ro)*xvel_jlo;
-                dest(i,j,k,rov) = dest(i,j,k,ro)*yvel;
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-
-                for(int n = 0; n < numcomp; ++n){
-                  if(std::isnan(dest(i,j,k,n))){
-                    Print(myproc) << "rank= " << myproc << ",Nan found, i= " << i << ",j= " << j
-                    << ", n= " << n  << ", xvel_jlo= " << xvel_jlo << 
-                    ", vmod_loc= " << vmod_loc << "yvel= " << yvel << ", rou= " << dest(i,j,k,rou) 
-                    << ", vmod_jlo= " << vmod_jlo << ", riem1= " << riem1 << ", ss_jlo" << ss_jlo << "\n";
-                  }
-                }
-              }
-
-            }
-
-          }
-        }
-      }
-
-    if(lo.x < ilo){
-      if(bc.lo(0) == BCType::reflect_even){
-        const int imin = lo.x;
-        const int imax = ilo-1;
-        //apply symmetry BC at lower corners of domain based on BC setup
-        for(int n = 0; n < numcomp; ++n){
-          for(int k = lo.z; k <= hi.z; ++k){
-            for(int j = jmin; j <= jmax; ++j){
-              for(int i = imin; i <= imax; ++i){
-                dest(i,j,k,n) = dest(ilo+(ilo-i)-1,j,k,n);
-              }
-            }
-          }
-        }
-      }
-    }  
-  }
 
     if (hi.y > jhi) {
       const int jmin = jhi+1;
@@ -322,313 +257,29 @@ AmrCoreAdv::outletBC_riemann (Box const& bx, Array4<Real> const& dest,
         Real pinf = pfs;
         for (int k = lo.z; k <= hi.z; ++k) {
           for (int i = lo.x; i <= hi.x; ++i) {
-            //  First, calculate Mach number at j = jlo
-            Real vmod_jhi = std::sqrt( std::pow(dest(i,jhi,k,rou)/dest(i,jhi,k,ro),2.0) 
-                  + std::pow(dest(i,jhi,k,rov)/dest(i,jhi,k,ro),2.0) );
-            Real ss_jhi = std::sqrt(gamma*dest(i,jhi,k,pre)/dest(i,jhi,k,ro));
-            dest(i,jhi,k,mach) = vmod_jhi/ss_jhi;
-
-            if(dest(i,jhi,k,mach) >= 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
               for (int j = jmin; j <= jmax; ++j) {
-                for (int n = 0; n < numcomp; ++n){
+                Real x = xlo + (i + 0.5)*dx;
+                if(x <= lenwall){
+                  // impose no-penetration wall BC upto a certain length lenwall
+                  dest(i,j,k,ro) = dest(i,jhi-(j-jhi)+1,k,ro);
+                  dest(i,j,k,rou) = dest(i,jhi-(j-jhi)+1,k,rou);
+                  dest(i,j,k,roE) = dest(i,jhi-(j-jhi)+1,k,roE);
+                  dest(i,j,k,pre) = dest(i,jhi-(j-jhi)+1,k,pre);
+                  dest(i,j,k,mach) = dest(i,jhi-(j-jhi)+1,k,mach);
+                  dest(i,j,k,rov) = -dest(i,jhi-(j-jhi)+1,k,rov);
+                }else{
+                  for(int n = 0; n < numcomp; ++n){
+                    // first-order extrapolation in other places
                     dest(i,j,k,n) = dest(i,jhi,k,n);
+                  }
                 }
               }
-            }else{
-            // Subsonic outlet BC (based on Riemann invariants)
-              for(int j = jmin; j <= jmax; ++j){
-                 dest(i,j,k,pre) = pfs;
-              }
-            // y-component of velocity, 1st Riemann invariant and entropy are set 
-            // based on the end cell value
-              Real xvel_jhi = dest(i,jhi,k,rou)/dest(i,jhi,k,ro);
-              Real ent_jhi = dest(i,jhi,k,pre)/(std::pow(dest(i,jhi,k,ro),gamma));
-              for(int j = jmin; j <= jmax; ++j){
-                dest(i,j,k,ro) = std::pow(dest(i,j,k,pre)/ent_jhi, 1.0/gamma);
-              }
-              Real riem1 = vmod_jhi + 2.0*ss_jhi/(gamma-1);
-
-              for(int j = jmin; j <= jmax; ++j){
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                Real vmod_loc = riem1 - (2.0*ss_loc/(gamma-1));
-                if(vmod_loc < 0.0){
-                	vmod_loc = 0.0;
-                  // Print(myproc) << "rank= " << myproc << ", vmod -ve = " << vmod_loc
-                  // << "i = " << i << ", j= " << j << "\n";
-                } 
-                Real yvel = std::sqrt(std::pow(vmod_loc,2.0) - std::pow(xvel_jhi,2.0));
-                if(std::isnan(yvel)){
-                		yvel = 0.0;
-               	}  
-                dest(i,j,k,rou) = dest(i,j,k,ro)*xvel_jhi;
-                dest(i,j,k,rov) = dest(i,j,k,ro)*yvel;
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-
             }
 
           }
-        }
-      }
 
-    if(lo.x < ilo){
-      if(bc.lo(0) == BCType::reflect_even){
-        const int imin = lo.x;
-        const int imax = ilo-1;
-        //apply symmetry BC at lower corners of domain based on BC setup
-        for(int n = 0; n < numcomp; ++n){
-          for(int k = lo.z; k <= hi.z; ++k){
-            for(int j = jmin; j <= jmax; ++j){
-              for(int i = imin; i <= imax; ++i){
-                dest(i,j,k,n) = dest(ilo+(ilo-i)-1,j,k,n);
-              }
-            }
-          }
-        }
-      }
-    }   
-  }
-#endif
-    ParallelDescriptor::Barrier();   
-
-}
-
-void 
-AmrCoreAdv::outletBC_hoextrap (Box const& bx, Array4<Real> const& dest,
-                            const int dcomp, const int numcomp,
-                            GeometryData const& geom, const Real time,
-                            const BCRec* bcr, const int bcomp,
-                            const int orig_comp)
-{
-    int myproc = ParallelDescriptor::MyProc();
-    const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, mach = 5;
-    const Real gamma = 1.4;
-
-    Real pfs = 0.0;
-    ParmParse pp("prob");
-    pp.get("pfs",pfs);
-
-    const auto lo = amrex::lbound(bx);
-    const auto hi = amrex::ubound(bx);
-    const Box qbx(dest);
-    const auto qlo = amrex::lbound(qbx);
-    const auto qhi = amrex::ubound(qbx);
-
-    const Box& domain = geom.Domain();
-    const auto domlo = amrex::lbound(domain);
-    const auto domhi = amrex::ubound(domain);
-
-    const int is = std::max(qlo.x, domlo.x);
-    const int ie = std::min(qhi.x, domhi.x);
-    const int ilo = domlo.x;
-    const int ihi = domhi.x;
-
-#if AMREX_SPACEDIM >= 2
-    const int js = std::max(qlo.y, domlo.y);
-    const int je = std::min(qhi.y, domhi.y);
-    const int jlo = domlo.y;
-    const int jhi = domhi.y;
-#endif
-
-    Array4<Real> q(dest);
-    BCRec const& bc = bcr[pre];
-
-    // Print() << "ncomp= " << numcomp << "\n";
-
-    if (lo.x < ilo) {
-      const int imin = lo.x;
-      const int imax = ilo-1;
-
-      if (bc.lo(0) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int j = lo.y; j <= hi.y; ++j) {
-            //  First, calculate Mach number at i = ilo
-            Real vmod_ilo = std::sqrt( std::pow(dest(ilo,j,k,rou)/dest(ilo,j,k,ro),2.0) 
-                  + std::pow(dest(ilo,j,k,rov)/dest(ilo,j,k,ro),2.0) );
-            Real ss_ilo = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
-            dest(ilo,j,k,mach) = vmod_ilo/ss_ilo;
-
-            if(dest(ilo,j,k,mach) >= 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
-              for (int i = imin; i <= imax; ++i) {
-                  dest(i,j,k,pre) = dest(ilo,j,k,pre);
-
-                  dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                  + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                  Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                    + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                  Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                  dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-            }else{
-            // Subsonic outlet BC (pressure set to freestream value)
-              for(int i = imin; i <= imax; ++i){
-                dest(i,j,k,pre) = pinf;
-
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                  + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (hi.x > ihi) {
-      const int imin = ihi+1;
-      const int imax = hi.x;
-
-      if (bc.hi(0) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int j = lo.y; j <= hi.y; ++j) {
-            //  First, calculate Mach number at i = ihi
-            Real vmod_ihi = std::sqrt( std::pow(dest(ihi,j,k,rou)/dest(ihi,j,k,ro),2.0) 
-                  + std::pow(dest(ihi,j,k,rov)/dest(ihi,j,k,ro),2.0) );
-            Real ss_ihi = std::sqrt(gamma*dest(ihi,j,k,pre)/dest(ihi,j,k,ro));
-            dest(ihi,j,k,mach) = vmod_ihi/ss_ihi;
-
-            if(dest(ihi,j,k,mach) >= 1.0){
-              for (int i = imin; i <= imax; ++i) {
-                  dest(i,j,k,pre) = dest(ihi,j,k,pre);
-
-                  dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                  + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                  Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                    + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                  Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                  dest(i,j,k,mach) = vmod_loc/ss_loc;
-                }
-              }else{
-                // Subsonic outlet BC (based on Riemann invariants)
-                for(int i = imin; i <= imax; ++i){
-                  dest(i,j,k,pre) = pinf;
-
-                  dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                  + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                  Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                    + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                  Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                  dest(i,j,k,mach) = vmod_loc/ss_loc;
-                }
-
-              }
-
-            }
-          }
-        }
-    }
-
-#if AMREX_SPACEDIM >= 2
-
-    if (lo.y < jlo) {
-      const int jmin = lo.y;
-      const int jmax = jlo-1;
-
-      if (bc.lo(1) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int i = lo.x; i <= hi.x; ++i) {
-            //  First, calculate Mach number at j = jlo
-            Real vmod_jlo = std::sqrt( std::pow(dest(i,jlo,k,rou)/dest(i,jlo,k,ro),2.0) 
-                  + std::pow(dest(i,jlo,k,rov)/dest(i,jlo,k,ro),2.0) );
-            Real ss_jlo = std::sqrt(gamma*dest(i,jlo,k,pre)/dest(i,jlo,k,ro));
-            dest(i,jlo,k,mach) = vmod_jlo/ss_jlo;
-
-            if(dest(i,jlo,k,mach) > 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
-              for (int j = jmin; j <= jmax; ++j) {
-                dest(i,j,k,pre) = dest(i,jlo,k,pre);
-
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                  + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-            }else{
-            // Subsonic outlet BC (based on Riemann invariants)
-              for(int j = jmin; j <= jmax; ++j){
-                dest(i,j,k,pre) = pinf;
-
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                  + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-
-            }
-
-          }
-        }
-      } 
-  }
-
-    if (hi.y > jhi) {
-      const int jmin = jhi+1;
-      const int jmax = hi.y;
-
-      if (bc.hi(1) == BCType::ext_dir) {
-        Real pinf = pfs;
-        for (int k = lo.z; k <= hi.z; ++k) {
-          for (int i = lo.x; i <= hi.x; ++i) {
-            //  First, calculate Mach number at j = jlo
-            Real vmod_jhi = std::sqrt( std::pow(dest(i,jhi,k,rou)/dest(i,jhi,k,ro),2.0) 
-                  + std::pow(dest(i,jhi,k,rov)/dest(i,jhi,k,ro),2.0) );
-            Real ss_jhi = std::sqrt(gamma*dest(i,jhi,k,pre)/dest(i,jhi,k,ro));
-            dest(i,jhi,k,mach) = vmod_jhi/ss_jhi;
-
-            if(dest(i,jhi,k,mach) >= 1.0){
-            // supersonic BC is only 1st order extrapolation for all quantities
-              for (int j = jmin; j <= jmax; ++j) {
-                dest(i,j,k,pre) = dest(i,jhi,k,pre);
-
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                  + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-            }else{
-            // Subsonic outlet BC (based on Riemann invariants)
-              for(int j = jmin; j <= jmax; ++j){
-                dest(i,j,k,pre) = pfs;
-
-                dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1)
-                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
-
-                Real vmod_loc = std::sqrt( std::pow(dest(i,j,k,rou)/dest(i,j,k,ro),2.0)
-                  + std::pow(dest(i,j,k,rov)/dest(i,j,k,ro),2.0) );
-                Real ss_loc = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
-                dest(i,j,k,mach) = vmod_loc/ss_loc;
-              }
-            }
-
-          }
         }
       }  
-  }
-#endif
-    ParallelDescriptor::Barrier();   
+#endif  
 
 }

@@ -103,15 +103,10 @@ private:
     // function to initialize the isentropic vortex
     void initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const Geometry& geom);
 
-    void FillDomainBoundary (MultiFab& phi, const Geometry& geom, const Vector<BCRec>& bc);
+    void FillDomainBoundary (MultiFab& phi, const Geometry& geom, const Vector<BCRec>& bc, Real cur_time);
 
     // Need to declare as static, else pass function pointer in AmrCoreAdv::FillDomainBoundary
-    static void outletBC_riemann (Box const& bx, Array4<Real> const& dest,
-                            const int dcomp, const int numcomp,
-                            GeometryData const& geom, const Real time,
-                            const BCRec* bcr, const int bcomp,
-                            const int orig_comp);
-    static void outletBC_hoextrap (Box const& bx, Array4<Real> const& dest,
+    static void outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
                             const int dcomp, const int numcomp,
                             GeometryData const& geom, const Real time,
                             const BCRec* bcr, const int bcomp,

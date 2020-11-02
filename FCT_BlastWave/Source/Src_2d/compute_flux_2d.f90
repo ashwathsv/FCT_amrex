@@ -4,7 +4,7 @@ module compute_flux_module
   ! use amrex_paralleldescriptor_module
   implicit none
   integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, ent = 5
-  real(amrex_real), parameter :: half = 0.5_amrex_real, one3 = 1.d0/3.d0, one6 = 1.d0/6.d0
+  real(amrex_real), parameter :: half = 0.5_amrex_real, one3 = 1.d0/3.d0, one6 = 1.d0/6.d0, one4 = 0.25_amrex_real
 
   private
 
@@ -330,20 +330,18 @@ subroutine compute_ad_flux( level, time, nc, dtdx, dtdy, lo, hi,  &
     do k = ftx_lo(3), ftx_hi(3)
       do j = ftx_lo(2)+1, ftx_hi(2)-1
         do i = ftx_lo(1)+1, ftx_hi(1)-1
-          epsx = dtdx*vx(i,j)  
-          ! epsy = one4*dtdy*(vy(i,j) + vy(i,j+1) + vy(i-1,j) + vy(i-1,j+1))
-
-          ! epsx = dtdx*half*( (utemp(i-1,j,k,rou)/utemp(i-1,j,k,ro)) &
-          ! &    + (utemp(i,j,k,rou)/utemp(i,j,k,ro)) )
+          epsx = dtdx*vx(i,j)
           nuxx = one6 - one6*(epsx**2)
-          ! nuxy = -half*epsx*epsy
-          ! ut1 and ut2 store the values at the corners of the face at which f_ad is calculated
-          ! ut1(n) = one4*(ucx(i,j,k,n) + ucx(i,j+1,k,n) + ucx(i-1,j,k,n) + ucx(i-1,j+1,k,n))
-          ! ut2(n) = one4*(ucx(i,j,k,n) + ucx(i,j-1,k,n) + ucx(i-1,j,k,n) + ucx(i-1,j-1,k,n))
 
-          fltx(i,j,k,n) = nuxx*(ucx(i,j,k,n) - ucx(i-1,j,k,n)) 
-          ! &
-          ! &             + nuxy*(ut1(n) - ut2(n))
+          epsy = one4*dtdy*(vy(i,j) + vy(i,j+1) + vy(i-1,j) + vy(i-1,j+1))
+          nuxy = -half*epsx*epsy
+          
+          ! ! ut1 and ut2 store the values at the corners of the face at which f_ad is calculated
+          ut1(n) = one4*(ucx(i,j,k,n) + ucx(i,j+1,k,n) + ucx(i-1,j,k,n) + ucx(i-1,j+1,k,n))
+          ut2(n) = one4*(ucx(i,j,k,n) + ucx(i,j-1,k,n) + ucx(i-1,j,k,n) + ucx(i-1,j-1,k,n))
+
+          fltx(i,j,k,n) = nuxx*(ucx(i,j,k,n) - ucx(i-1,j,k,n)) &
+          &             + nuxy*(ut1(n) - ut2(n))
 
           ! if(j == lo(2) .and. n == nc-2) then
           !   print*,"i= ", i, "fltx= ",fltx(i,j,k,ro),", ",fltx(i,j,k,rou), &
@@ -373,15 +371,16 @@ subroutine compute_ad_flux( level, time, nc, dtdx, dtdy, lo, hi,  &
       do j = fty_lo(2)+1,fty_hi(2)-1
         do i = fty_lo(1)+1,fty_hi(1)-1
           epsy = dtdy*vy(i,j)
-          ! epsx = one4*dtdx*(vx(i,j) + vx(i+1,j) + vx(i,j-1) + vx(i+1,j-1))
           nuyy = one6 - one6*(epsy**2)
-          ! nuxy = -half*epsx*epsy
-          ! ut1(n) = one4*(ucy(i,j,k,n) + ucy(i+1,j,k,n) + ucy(i,j-1,k,n) + ucy(i+1,j-1,k,n))
-          ! ut2(n) = one4*(ucy(i,j,k,n) + ucy(i-1,j,k,n) + ucy(i,j-1,k,n) + ucy(i-1,j-1,k,n))  
+
+          epsx = one4*dtdx*(vx(i,j) + vx(i+1,j) + vx(i,j-1) + vx(i+1,j-1))
+          nuxy = -half*epsx*epsy
+
+          ut1(n) = one4*(ucy(i,j,k,n) + ucy(i+1,j,k,n) + ucy(i,j-1,k,n) + ucy(i+1,j-1,k,n))
+          ut2(n) = one4*(ucy(i,j,k,n) + ucy(i-1,j,k,n) + ucy(i,j-1,k,n) + ucy(i-1,j-1,k,n))  
           
-          flty(i,j,k,n) = nuyy*(ucy(i,j,k,n) - ucy(i,j-1,k,n))  
-          ! &
-          ! &             + nuxy*(ut1(n) - ut2(n))
+          flty(i,j,k,n) = nuyy*(ucy(i,j,k,n) - ucy(i,j-1,k,n))  &
+          &             + nuxy*(ut1(n) - ut2(n))
 
           ! if(j == lo(2) .and. n == nc-2) then
           !   print*,"i= ", i, "flty= ",flty(i,j,k,ro),", ",flty(i,j,k,rou), &

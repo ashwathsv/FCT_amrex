@@ -37,12 +37,17 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
    const auto lo = lbound(bx);
    const auto hi = ubound(bx);
 
-   if(probtag != 2){
+   if(probtag == 2){
+    xcm = 0.5*(geom.ProbLo(0) + geom.ProbHi(0));
+    ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));  
+   }
+   else if(probtag ==6 || probtag == 7){
+    xcm = geom.ProbLo(0);
+    ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));    
+   }
+   else{  
     xcm = geom.ProbLo(0);
     ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));
-   }else{
-    xcm = 0.5*(geom.ProbLo(0) + geom.ProbHi(0));
-    ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));    
    }
 
    for(int k = lo.z; k <= hi.z; ++k){
@@ -51,7 +56,12 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
    				Real x = geom.ProbLo(0) + (i + 0.5)*geom.CellSize(0);
    				Real y = geom.ProbLo(1) + (j + 0.5)*geom.CellSize(1);
 
-   				Real dist = std::pow(x-xcm,2.0) + std::pow(y-ycm,2.0) - std::pow(rad_bw,2.0);
+          Real dist = 0.0;
+          if(probtag <= 5){
+            dist = std::pow(x-xcm,2.0) + std::pow(y-ycm,2.0) - std::pow(rad_bw,2.0);
+          }else{
+            dist = x-rad_bw;
+          }
           Real du = 1E-10;
           Real dv = 1E-10;
 
@@ -445,8 +455,9 @@ AmrCoreAdv::GetProbeDets ()
             for (int i = lo.x; i <= hi.x; ++i) {
               if(i == iprobe[n] && j == jprobe[n]){
                 Print(myproc) << "point is present in rank= " << myproc << ", lo.x= " << lo.x << 
-                ", hi.x= " << hi.x << ", lo.y= " << lo.y << ", hi.y= " << hi.y << ", iprobe"
-                << iprobe[n] << ", jprobe= " << jprobe[n] << "\n";
+                ", hi.x= " << hi.x << ", lo.y= " << lo.y << ", hi.y= " << hi.y << ", iprobe= "
+                << iprobe[n] << ", jprobe= " << jprobe[n] << ", xprobe= " << xprobe
+                << ", yprobe= " << yprobe << "\n";
                 proberank[n] = myproc;
               }
             }

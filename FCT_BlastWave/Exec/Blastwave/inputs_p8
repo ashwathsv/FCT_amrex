@@ -1,0 +1,68 @@
+max_step  = 600
+stop_time = 0.0005
+
+#	COMPONENTS
+max_rk = 2
+
+# PROBLEM SIZE & GEOMETRY
+geometry.is_periodic =  0  0  1
+geometry.coord_sys   =  0       # 0 => cart
+# Domain size (m)
+geometry.prob_lo     =  0.0  0.0  1.0 
+geometry.prob_hi     =  2.0  0.2  1.0
+amr.n_cell           =  512  32   1
+
+# VERBOSITY
+amr.v              = 1       # verbosity in Amr
+amr.n_error_buf	   = 8
+amr.grid_eff	   = 0.7
+
+# REFINEMENT
+amr.max_level       = 2       # maximum level number allowed
+amr.ref_ratio       = 2 2 2 2 # refinement ratio
+amr.blocking_factor = 8       # block factor in grid generation
+amr.max_grid_size   = 1024
+
+amr.regrid_int      = 2       # how often to regrid
+
+# TIME STEP CONTROL
+adv.cfl            = 0.4     # cfl number for hyperbolic system
+                             # In this test problem, the velocity is
+			     # time-dependent.  We could use 0.9 in
+			     # the 3D test, but need to use 0.7 in 2D
+			     # to satisfy CFL condition.
+
+adv.do_reflux = 1
+
+# Tagging
+adv.tagfrac = 0.06 		#	must be < 1 
+
+# PLOTFILES
+amr.plot_file  = Outputs_P8L2/plt    # root name of plot file
+amr.plot_int   = 30    # number of timesteps between plot files
+
+# CHECKPOINT
+amr.chk_file = Outputs_P8L2/chk      # root name of checkpoint file
+amr.chk_int  = 80      # number of timesteps between checkpoint files
+amr.restart  = Outputs_P8L2/chk00445 # restart from this checkpoint file
+
+# INITIAL CONDITIONS
+prob.probtag = 8
+
+# DEFINING SIZE OF SQUARE WAVE (CENTRED AT ORIGIN)
+prob.p2		  	  = 2026000.0				#	High pressure, in Pa
+prob.p1		  	  = 101300.0				#	Low pressure, in Pa
+prob.pfs 		  = 101300.0				#	Ambient pressure, in Pa
+prob.ro2		  = 2.815				#	Density of high pressure region, in kg/m3
+prob.ro1		  = 1.173				#	Density of low pressure region, in kg/m3
+prob.u2		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
+prob.u1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
+prob.v2		  	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
+prob.v1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
+prob.rad_blast	  = 0.0
+prob.ncellw		  = 5
+
+#	PROBE DETAILS
+aux.nprobes		  = 2
+aux.iprobes		  = 63 127
+aux.jprobes       = 7 7
