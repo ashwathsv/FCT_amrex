@@ -45,7 +45,7 @@ AmrCoreAdv::AmrCoreAdv ()
 
     bcs.resize(ncomp);
 
-    Print() << "probtag= " << probtag << "\n";
+    // Print() << "probtag= " << probtag << "\n";
 
     //  Set periodic BCs in y-direction
     if(probtag == 1){
@@ -123,7 +123,7 @@ AmrCoreAdv::AmrCoreAdv ()
         }
         bcs[rov].setLo(1, BCType::reflect_odd);        
     }
-    else if(probtag == 10){
+    else if(probtag == 10 || probtag == 12){
         for(int n = 0; n < ncomp; ++n){
             bcs[n].setLo(0, BCType::ext_dir);
             bcs[n].setLo(1, BCType::reflect_even);
@@ -179,6 +179,7 @@ AmrCoreAdv::ReadParameters ()
 
     pp.query("cfl", cfl);
         pp.query("do_reflux", do_reflux);
+    pp.query("diff1", diff1);
     }
 
     {
@@ -193,7 +194,7 @@ AmrCoreAdv::ReadParameters ()
         pp.get("v2",v2);
         pp.get("v1",v1);
         pp.query("rad_blast",rad_bw);
-        pp.get("probtag",probtag);                  
+        pp.get("probtag",probtag);              
     }
 
     {
@@ -358,6 +359,13 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     t_new[lev] = time;
     t_old[lev] = time - 1.e200;
 
+    Real pminfrac = 0.01, rominfrac = 0.01;
+    {
+        ParmParse pp("prob");
+        pp.query("pminfrac",pminfrac);
+        pp.query("pminfrac",rominfrac);
+    }
+
     if (lev > 0 && do_reflux) {
     flux_reg[lev].reset(new FluxRegister(ba, dm, refRatio(lev-1), lev, ncomp));
     }
@@ -394,6 +402,8 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
         phi_new[lev].FillBoundary(geom[lev].periodicity());
         AmrCoreAdv::FillDomainBoundary(phi_new[lev],geom[lev],bcs,time);
     }
+    pmin = pminfrac*phi_new[lev].min(pre);
+    romin = rominfrac*phi_new[lev].min(ro);
     // Print(myproc) << "rank= " << myproc << ", does phi_new have NaNs (after BC)? " << phi_new[lev].contains_nan() << "\n";
     Print() << "min(ro)= " << phi_new[lev].min(ro,4) << ", min(pre)= " << phi_new[lev].min(pre,4)
     << ", min(roE)= " << phi_new[lev].min(roE,4) << ", min(mach)= " << phi_new[lev].min(mach,4) << "\n";
@@ -1031,7 +1041,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     AMREX_D_DECL(BL_TO_FORTRAN_3D(flxx),
                     BL_TO_FORTRAN_3D(flxy),
                     BL_TO_FORTRAN_3D(flux[2])),
-                    dx, &dt_lev);
+                    dx, &dt_lev, &diff1, &pmin, &romin);
                 if(do_reflux && rk == rk_max && fct_step == 2){
                     // for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi){
                         for(int i = 0; i < BL_SPACEDIM ; i++){
@@ -1071,7 +1081,8 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
             if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0 || S_new.min(mach,ngrow) < 0.0 || S_new.min(roE,ngrow) < 0.0){
                 Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
                 Print() << "min ro= " << S_new.min(ro,ngrow) 
-                        << ", min pre= " << S_new.min(pre,ngrow) << "\n";
+                        << ", min pre= " << S_new.min(pre,ngrow) << ", min roE= " << S_new.min(roE,ngrow)
+                        << ", min mach= " << S_new.min(mach,ngrow) <<"\n";
                 WritePlotFile();
                 amrex::Error("Pressure/density is negative, aborting...");
             }

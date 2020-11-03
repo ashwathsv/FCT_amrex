@@ -284,11 +284,11 @@ subroutine compute_ad_flux( level, time, nc, dtdx, dtdy, lo, hi,  &
       &                 vx, vx_lo, vx_hi,        & 
       &                 vy, vy_lo, vy_hi,        &
       &                 fltx, ftx_lo, ftx_hi,    &
-      &                 flty, fty_lo, fty_hi     )
+      &                 flty, fty_lo, fty_hi, diff1     )
 
   integer, intent(in) :: level, nc
   integer, intent(in) :: lo(3), hi(3)
-  real(amrex_real), intent(in) :: dtdx, dtdy, time
+  real(amrex_real), intent(in) :: dtdx, dtdy, time, diff1
   integer, intent(in) :: ut_lo(3), ut_hi(3)
   integer, intent(in) :: ucx_lo(3), ucx_hi(3)
   integer, intent(in) :: ucy_lo(3), ucy_hi(3)
@@ -331,10 +331,10 @@ subroutine compute_ad_flux( level, time, nc, dtdx, dtdy, lo, hi,  &
       do j = ftx_lo(2)+1, ftx_hi(2)-1
         do i = ftx_lo(1)+1, ftx_hi(1)-1
           epsx = dtdx*vx(i,j)
-          nuxx = one6 - one6*(epsx**2)
+          nuxx = diff1*(one6 - one6*(epsx**2))
 
           epsy = one4*dtdy*(vy(i,j) + vy(i,j+1) + vy(i-1,j) + vy(i-1,j+1))
-          nuxy = -half*epsx*epsy
+          nuxy = diff1*(-half*epsx*epsy)
           
           ! ! ut1 and ut2 store the values at the corners of the face at which f_ad is calculated
           ut1(n) = one4*(ucx(i,j,k,n) + ucx(i,j+1,k,n) + ucx(i-1,j,k,n) + ucx(i-1,j+1,k,n))
@@ -371,10 +371,10 @@ subroutine compute_ad_flux( level, time, nc, dtdx, dtdy, lo, hi,  &
       do j = fty_lo(2)+1,fty_hi(2)-1
         do i = fty_lo(1)+1,fty_hi(1)-1
           epsy = dtdy*vy(i,j)
-          nuyy = one6 - one6*(epsy**2)
+          nuyy = diff1*(one6 - one6*(epsy**2))
 
           epsx = one4*dtdx*(vx(i,j) + vx(i+1,j) + vx(i,j-1) + vx(i+1,j-1))
-          nuxy = -half*epsx*epsy
+          nuxy = diff1*(-half*epsx*epsy)
 
           ut1(n) = one4*(ucy(i,j,k,n) + ucy(i+1,j,k,n) + ucy(i,j-1,k,n) + ucy(i+1,j-1,k,n))
           ut2(n) = one4*(ucy(i,j,k,n) + ucy(i-1,j,k,n) + ucy(i,j-1,k,n) + ucy(i-1,j-1,k,n))  

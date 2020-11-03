@@ -482,16 +482,13 @@ AmrCoreAdv::WriteProbeFile (int lev, Real cur_time, int stepnum)
     int myproc = ParallelDescriptor::MyProc();
 
     for(int n = 0; n < nprobes; ++n){
-      std::string plotname = "Outputs_P";
-      plotname = amrex::Concatenate(plotname, probtag, 1);
-      plotname = plotname + "L";
-      plotname = amrex::Concatenate(plotname, max_level, 1);
-      plotname = plotname + "/varstimeseriespr";
+
+      std::string plotname = plot_file.substr(0,plot_file.length()-4) + "/varstimeseriespr";
       plotname = amrex::Concatenate(plotname, n, 2);
       std::string filename;
       filename = plotname + ".txt";
 
-      // Print()<<"filename= " << filename << "\n";
+      Print()<<"filename= " << filename << "\n";
 
       Real xprobe = geom1.ProbLo(0) + (iprobe[n] + 0.5)*geom1.CellSize(0);
       Real yprobe = geom1.ProbLo(1) + (jprobe[n] + 0.5)*geom1.CellSize(1);

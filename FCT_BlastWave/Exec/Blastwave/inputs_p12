@@ -1,5 +1,6 @@
-max_step  = 2500
-stop_time = 0.18309677
+max_step  = 1000
+# 400 steps at level 0
+stop_time = 0.0027375076502845529
 
 #	COMPONENTS
 max_rk = 2
@@ -9,8 +10,8 @@ geometry.is_periodic =  0  0  1
 geometry.coord_sys   =  0       # 0 => cart
 # Domain size (m)
 geometry.prob_lo     =  0.0  0.0  1.0 
-geometry.prob_hi     =  2.0  0.2  1.0
-amr.n_cell           =  512  32   1
+geometry.prob_hi     =  2.0  2.0  1.0
+amr.n_cell           =  128  256   1
 
 # VERBOSITY
 amr.v              = 1       # verbosity in Amr
@@ -21,9 +22,9 @@ amr.grid_eff	   = 0.7
 amr.max_level       = 0       # maximum level number allowed
 amr.ref_ratio       = 2 2 2 2 # refinement ratio
 amr.blocking_factor = 8       # block factor in grid generation
-amr.max_grid_size   = 1024
+amr.max_grid_size   = 512
 
-amr.regrid_int      = 2       # how often to regrid
+amr.regrid_int      = 4       # how often to regrid
 
 # TIME STEP CONTROL
 adv.cfl            = 0.4     # cfl number for hyperbolic system
@@ -38,30 +39,36 @@ adv.do_reflux = 1
 adv.tagfrac = 0.06 		#	must be < 1 
 
 # PLOTFILES
-amr.plot_file  = Outputs_P3L0/plt    # root name of plot file
-amr.plot_int   = 40    # number of timesteps between plot files
+amr.plot_file  = Outputs_P12L0ld/plt    # root name of plot file
+amr.plot_int   = 25    # number of timesteps between plot files
 
 # CHECKPOINT
-amr.chk_file = Outputs_P3L0/chk      # root name of checkpoint file
-amr.chk_int  = 500      # number of timesteps between checkpoint files
-amr.restart  = Outputs_P3L0/chk02000 # restart from this checkpoint file
+amr.chk_file = Outputs_P12L0ld/chk      # root name of checkpoint file
+amr.chk_int  = 100      # number of timesteps between checkpoint files
+amr.restart  = Outputs_P12L0ld/chk00500 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
-prob.probtag = 3
+prob.probtag = 12
 
 # DEFINING SIZE OF SQUARE WAVE (CENTRED AT ORIGIN)
 prob.p2		  	  = 2026000.0				#	High pressure, in Pa
 prob.p1		  	  = 101300.0				#	Low pressure, in Pa
 prob.pfs 		  = 101300.0				#	Ambient pressure, in Pa
-prob.ro2		  = 1.173				#	Density of high pressure region, in kg/m3
-prob.ro1		  = 1.0				#	Density of low pressure region, in kg/m3
+prob.ro2		  = 2.815				#	Density of high pressure region, in kg/m3
+prob.ro1		  = 1.173				#	Density of low pressure region, in kg/m3
 prob.u2		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.u1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v2		  	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
-prob.rad_blast	  = 0.02
+prob.rad_blast	  = 0.0
+prob.ncellw		  = 5
+prob.ltube		  = 0.1
+prob.lwall		  = 0.0
+prob.loffset	  = 0.1
+prob.ylowall	  = 0
+#prob.inflow_time = 0.0005
 
 #	PROBE DETAILS
 aux.nprobes		  = 4
-aux.iprobes		  = 63 127 255 383  
-aux.jprobes       = 15 15 15 15
+aux.iprobes		  = 15 15 15 15
+aux.jprobes       = 31 63 95 127

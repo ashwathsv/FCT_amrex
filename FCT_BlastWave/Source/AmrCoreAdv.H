@@ -229,6 +229,8 @@ private:
 
     Real p2, p1, ro2, ro1, u2, u1, v2, v1;
 
+    Real diff1 = 1.0, pmin, romin;
+
     // some parameters
     const Real pi = 3.141592653589793238;
     const Real gamma = 1.4, c1 = 1/(gamma-1);

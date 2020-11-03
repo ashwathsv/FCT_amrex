@@ -8,7 +8,7 @@ subroutine advect(level, time, rk, rk_max, fct_step, nc, lo, hi, &
  &            vy  , vy_lo, vy_hi, &
  &            flxx, fx_lo, fx_hi, &
  &            flxy, fy_lo, fy_hi, &
- &            dx,dt) bind(C, name="advect")
+ &            dx,dt,diff1,pmin,romin) bind(C, name="advect")
 
 use amrex_fort_module, only : amrex_real
 use amrex_mempool_module, only : bl_allocate, bl_deallocate
@@ -19,7 +19,7 @@ implicit none
 
 integer, intent(in) :: level, rk, rk_max, nc, fct_step
 integer, intent(in) :: lo(3), hi(3)
-real(amrex_real), intent(in) :: dx(2), dt, time
+real(amrex_real), intent(in) :: dx(2), dt, time, diff1, pmin, romin
 integer, intent(in) :: u0_lo(3), u0_hi(3)
 integer, intent(in) :: ucx_lo(3), ucx_hi(3)
 integer, intent(in) :: ucy_lo(3), ucy_hi(3)
@@ -68,6 +68,6 @@ end if
     &           vy,   vy_lo, vy_hi,      &
     &           flxx, fx_lo, fx_hi,      &
     &           flxy, fy_lo, fy_hi,      &
-    &           dx, dt                   )
+    &           dx, dt, diff1, pmin, romin                   )
 
 end subroutine advect

@@ -25,7 +25,7 @@ module LCPFCT_module
     &           vy,   vy_lo, vy_hi,      &
     &           flxx, fx_lo, fx_hi,      &
     &           flxy, fy_lo, fy_hi,      &
-    &           dx, dt                   ) 
+    &           dx, dt, diff1, pmin, romin                   ) 
 
   use amrex_fort_module, only : amrex_real
   use amrex_mempool_module, only : bl_allocate, bl_deallocate
@@ -33,7 +33,7 @@ module LCPFCT_module
 
   integer, intent(in) :: level, nc, fct_step, rk, rk_max
   integer, intent(in) :: lo(3), hi(3)
-  real(amrex_real), intent(in) :: dx(2), dt, time
+  real(amrex_real), intent(in) :: dx(2), dt, time, diff1, pmin, romin
   integer, intent(in) :: u0_lo(3), u0_hi(3)
   integer, intent(in) :: ucx_lo(3), ucx_hi(3)
   integer, intent(in) :: ucy_lo(3), ucy_hi(3)
@@ -293,7 +293,7 @@ module LCPFCT_module
       &                 vx, vx_lo, vx_hi,        & 
       &                 vy, vy_lo, vy_hi,        &
       &                 fltx, ftx_lo, ftx_hi,    &
-      &                 flty, fty_lo, fty_hi     )
+      &                 flty, fty_lo, fty_hi, diff1     )
 
     if(level == 0) then
       ilo = lo(1)-1; ihi = hi(1)+1
@@ -454,17 +454,26 @@ module LCPFCT_module
           do i = ilo,ihi
             uout(i,j,k,n) = utemp(i,j,k,n) - (fltx(i+1,j,k,n) - fltx(i,j,k,n)) &
             &             - (flty(i,j+1,k,n) - flty(i,j,k,n))
+            if(n == ro .and. uout(i,j,k,n) < romin) then
+              uout(i,j,k,n) = romin
+            endif
           enddo
         enddo
       enddo
     enddo
 
-    ! update pressure and entropy
+    ! update pressure and mach
     do k = klo,khi
       do j = jlo,jhi
         do i = ilo,ihi
           uout(i,j,k,pre) = (gma-1)*( uout(i,j,k,roE)                       &
           &               -  half*( (uout(i,j,k,rou)**2 + uout(i,j,k,rov)**2)/uout(i,j,k,ro) ) )
+
+          if(uout(i,j,k,pre) < pmin) then
+            uout(i,j,k,pre) = pmin;
+            uout(i,j,k,roE) = (uout(i,j,k,pre)/(gma-1)) &
+                            +  half*((uout(i,j,k,rou)**2 + uout(i,j,k,rov)**2)/uout(i,j,k,ro))
+          endif
 
           ss = sqrt(gma*uout(i,j,k,pre)/uout(i,j,k,ro))
           velmod = sqrt( (uout(i,j,k,rou)/uout(i,j,k,ro))**2 + (uout(i,j,k,rov)/uout(i,j,k,ro))**2 )

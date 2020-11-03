@@ -43,7 +43,7 @@ amr.plot_int   = 15    # number of timesteps between plot files
 
 # CHECKPOINT
 amr.chk_file = Outputs_P11L0/chk      # root name of checkpoint file
-amr.chk_int  = 160      # number of timesteps between checkpoint files
+amr.chk_int  = 100      # number of timesteps between checkpoint files
 #amr.restart  = Outputs_P11L0/chk00100 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
@@ -63,7 +63,7 @@ prob.rad_blast	  = 0.0
 prob.ncellw		  = 5
 prob.ltube		  = 0.05
 prob.lwall		  = 0.0
-prob.loffset	  = 0.2
+prob.loffset	  = 0.1
 #prob.inflow_time  = 0.0005
 
 #	PROBE DETAILS

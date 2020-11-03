@@ -66,7 +66,7 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
     const Real gamma = 1.4;
 
     Real pfs = 0.0, roin = 0.0, pin = 0.0, uin = 0.0, vin = 0.0, ltube = 0.0, lwall = 0.0, loffset = 0.0, inflow_time = 1000.0;
-    int ncellw = 5, tagprob;
+    int ncellw = 5, tagprob, ylowall = 0;
     ParmParse pp("prob");
     pp.get("p2",pin);
     pp.get("ro2",roin);
@@ -114,7 +114,7 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
     Real dy  = geom.CellSize(1);
 #endif
 
-    if(tagprob == 9 || tagprob == 10 || tagprob == 11){
+    if(tagprob == 9 || tagprob == 10 || tagprob == 11 || tagprob == 12){
       vmodin = std::sqrt(std::pow(uin,2.0) + std::pow(vin,2.0));
       ptot = pin + (0.5*roin*std::pow(vmodin,2.0));
       alf = 0.0;
@@ -123,7 +123,7 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
       riem1 = vmodin + (2.0*ssin/(gamma-1));    
     }
 
-    if(tagprob == 10 || tagprob == 11){
+    if(tagprob == 10 || tagprob == 11 || tagprob == 12){
       // tube is 5 cells long in y-direction and wall is 2 cells aove the tube
       ltube = ylo + 5.0*dy;
       lwall = 2.0*dy;
@@ -133,6 +133,9 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
       pp.query("loffset",loffset);
       inflow_time = 1000.0; 
       pp.query("inflow_time",inflow_time); 
+      if(tagprob == 12){
+          pp.query("ylowall",ylowall);
+      }   
       // Print(0) << "time= " << time << ", inflow_time= " << inflow_time << "\n";
     }
 
@@ -188,7 +191,7 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
             }
           }
         } 
-      else if(tagprob == 10 || tagprob == 11){
+      else if(tagprob == 10){
           for(int k = lo.z; k <= hi.z; ++k){
             for(int j = lo.y; j <= hi.y; ++j){
               for(int i = imin; i <= imax; ++i){
@@ -217,12 +220,6 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
                               + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
                 } 
                 else if(dist_off > 0.0 && dist_tube <= 0.0 && time > inflow_time){
-                  // dest(i,j,k,ro) = dest(ilo+(ilo-i)-1,j,k,ro);
-                  // dest(i,j,k,rov) = dest(ilo+(ilo-i)-1,j,k,rov);
-                  // dest(i,j,k,roE) = dest(ilo+(ilo-i)-1,j,k,roE);
-                  // dest(i,j,k,pre) = dest(ilo+(ilo-i)-1,j,k,pre);
-                  // dest(i,j,k,mach) = dest(ilo+(ilo-i)-1,j,k,mach);
-                  // dest(i,j,k,rou) = -dest(ilo+(ilo-i)-1,j,k,rov); 
                   for(int n = 0; n < numcomp; ++n){
                     dest(i,j,k,n) = q(ilo,j,k,n);
                   }
@@ -238,6 +235,89 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
                 } else{
                   for(int n = 0; n < numcomp; ++n){
                     dest(i,j,k,n) = q(ilo,j,k,n);
+                  }
+                } 
+              }
+            }
+          }        
+        } 
+      else if(tagprob == 12 || tagprob == 11){
+          for(int k = lo.z; k <= hi.z; ++k){
+            for(int j = lo.y; j <= hi.y; ++j){
+              for(int i = imin; i <= imax; ++i){
+                Real y = ylo + (j + 0.5)*dy;
+                Real dist_off = (y + 0.5*dy) - (loffset);
+                Real dist_tube = (y + 0.5*dy) - (loffset + ltube);
+                Real dist_w1 = (y + 0.5*dy) - (loffset - lwall);
+                Real dist_w2 = (y + 0.5*dy) - (loffset + lwall);
+                if(dist_off > 0.0 && dist_tube <= 0.0 && time <= inflow_time){
+                  Real sslo = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
+                  Real vmodlo = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) 
+                              + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
+                  Real mac = vmodlo/sslo;
+                  if(mac <= 1.0){
+                    // vmod, sstmp, riem2 calculated at i = ilo
+                    Real vmod = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
+                    Real sstmp = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));
+                    Real riem2 = vmod - (2.0*sstmp/(gamma-1));
+                    // get mod of velocity at ghost cell uisng riem1 and riem2
+                    // riem1 is calculated based on inlet conditions, riem2 from i = ilo cell
+                    Real q = 0.5*(riem1 + riem2); // velmod at ghost cell
+                    Real ss = 0.25*(gamma-1)*(riem1 - riem2); // sound speed at ghost cell
+                    // First calculate mach number at ghost cells
+                    dest(i,j,k,mach) = q/ss;
+                    Real k1 = std::pow(1.0+(0.5*(gamma-1)*std::pow(dest(i,j,k,mach),2.0)), gamma/(gamma-1));
+                    dest(i,j,k,pre) = ptot/k1;
+                    dest(i,j,k,ro) = gamma*dest(i,j,k,pre)/std::pow(ss,2.0);
+                    dest(i,j,k,rou) = dest(i,j,k,ro)*q*std::cos(alf);
+                    dest(i,j,k,rov) = dest(i,j,k,ro)*q*std::sin(alf);
+                    dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1) 
+                                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                    if(dest(i,j,k,mach) < 0.0){
+                      amrex::Error("Mach number is negative, aborting...");
+                    }                       
+                  }else{
+                    // supersonic inlet (specify all variables from inflow)
+                    // First calculate mach number at ghost cells
+                    dest(i,j,k,pre) = pin;
+                    dest(i,j,k,ro) = roin;
+                    dest(i,j,k,rou) = roin*uin;
+                    dest(i,j,k,rov) = roin*vin;
+                    dest(i,j,k,roE) = dest(i,j,k,pre)/(gamma-1) 
+                                + 0.5*((std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro));
+                    Real q = std::sqrt(std::pow(dest(i,j,k,rou),2.0) + std::pow(dest(i,j,k,rov),2.0))/dest(i,j,k,ro);
+                    Real ss = std::sqrt(gamma*dest(i,j,k,pre)/dest(i,j,k,ro));
+                    dest(i,j,k,mach) = q/ss;
+                    if(dest(i,j,k,mach) < 0.0){
+                      amrex::Error("Mach number is negative, aborting...");
+                    }                    
+                  }
+                } 
+                else if(dist_off > 0.0 && dist_tube <= 0.0 && time > inflow_time){
+                  for(int n = 0; n < numcomp; ++n){
+                    dest(i,j,k,n) = q(ilo,j,k,n);
+                  }
+                }
+                else if( ((dist_w1 > 0.0 && dist_off <= 0.0) || (dist_off > 0.0 && dist_w2 <= 0.0 && dist_tube > 0.0)) && ylowall == 0 ){
+                  // impose no-penetration wall BC
+                  dest(i,j,k,ro) = dest(ilo+(ilo-i)-1,j,k,ro);
+                  dest(i,j,k,rov) = dest(ilo+(ilo-i)-1,j,k,rov);
+                  dest(i,j,k,roE) = dest(ilo+(ilo-i)-1,j,k,roE);
+                  dest(i,j,k,pre) = dest(ilo+(ilo-i)-1,j,k,pre);
+                  dest(i,j,k,mach) = dest(ilo+(ilo-i)-1,j,k,mach);
+                  dest(i,j,k,rou) = -dest(ilo+(ilo-i)-1,j,k,rou);                
+                } else{
+                  if(ylowall == 1){
+                    dest(i,j,k,ro) = dest(ilo+(ilo-i)-1,j,k,ro);
+                    dest(i,j,k,rov) = dest(ilo+(ilo-i)-1,j,k,rov);
+                    dest(i,j,k,roE) = dest(ilo+(ilo-i)-1,j,k,roE);
+                    dest(i,j,k,pre) = dest(ilo+(ilo-i)-1,j,k,pre);
+                    dest(i,j,k,mach) = dest(ilo+(ilo-i)-1,j,k,mach);
+                    dest(i,j,k,rou) = -dest(ilo+(ilo-i)-1,j,k,rou);                     
+                  }else{
+                    for(int n = 0; n < numcomp; ++n){
+                      dest(i,j,k,n) = q(ilo,j,k,n);       
+                    }
                   }
                 } 
               }
