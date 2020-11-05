@@ -35,7 +35,8 @@ extern "C"
 		     const amrex_real* dx, const amrex_real* problo,
 		     const amrex_real* time, const int* comp_lo, const int* comp_hi,
 		     const amrex_real* maxgradpx, const amrex_real* maxgradpy,
-		     const amrex_real* tagfrac);
+		     const amrex_real* tagfrac, const amrex_real* rad_blast, 
+		     const int* lev);
 
     void advect(const int* level, const amrex_real* time, const int* rk, const int* rk_max,
     	 const int* fct_step,

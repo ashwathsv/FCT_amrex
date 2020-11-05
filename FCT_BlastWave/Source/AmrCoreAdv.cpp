@@ -497,7 +497,7 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
             &tagval, &clearval,
             AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
             AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, &maxgradpx, &maxgradpy,
-            &tagfrac);
+            &tagfrac,&rad_bw,&lev);
         //
         // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags

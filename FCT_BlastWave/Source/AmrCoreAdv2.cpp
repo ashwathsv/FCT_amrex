@@ -45,10 +45,21 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
     xcm = geom.ProbLo(0);
     ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));    
    }
+   else if(probtag == 11){
+    xcm = geom.ProbLo(0);
+    ycm = geom.ProbLo(1) + rad_bw;
+    // if(geom.CellSize(0) < rad_bw || grom.CellSize(1) < rad_bw){
+    //   Print() << "radius of blast = " << rad_bw << ", less than dx= " << geom.CellSize(0)
+    // }     
+   }
    else{  
     xcm = geom.ProbLo(0);
     ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));
    }
+
+   ParmParse pp("prob");
+   pp.query("xcm", xcm);
+   pp.query("ycm", ycm);
 
    for(int k = lo.z; k <= hi.z; ++k){
    		for(int j = lo.y; j <= hi.y; ++j){
@@ -57,7 +68,7 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
    				Real y = geom.ProbLo(1) + (j + 0.5)*geom.CellSize(1);
 
           Real dist = 0.0;
-          if(probtag <= 5){
+          if(probtag <= 5 || probtag == 11){
             dist = std::pow(x-xcm,2.0) + std::pow(y-ycm,2.0) - std::pow(rad_bw,2.0);
           }else{
             dist = x-rad_bw;
