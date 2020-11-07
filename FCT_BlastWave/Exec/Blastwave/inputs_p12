@@ -1,6 +1,8 @@
-max_step  = 1000
+max_step  = 600
 # 400 steps at level 0
-stop_time = 0.0027375076502845529
+stop_time = 0.0003966767599
+#stop_time = 1e-2
+#stop_time = 0.0027375076502845529
 
 #	COMPONENTS
 max_rk = 2
@@ -10,8 +12,8 @@ geometry.is_periodic =  0  0  1
 geometry.coord_sys   =  0       # 0 => cart
 # Domain size (m)
 geometry.prob_lo     =  0.0  0.0  1.0 
-geometry.prob_hi     =  2.0  2.0  1.0
-amr.n_cell           =  128  256   1
+geometry.prob_hi     =  1.0  1.0  1.0
+amr.n_cell           =  256  256   1
 
 # VERBOSITY
 amr.v              = 1       # verbosity in Amr
@@ -27,25 +29,26 @@ amr.max_grid_size   = 512
 amr.regrid_int      = 4       # how often to regrid
 
 # TIME STEP CONTROL
-adv.cfl            = 0.4     # cfl number for hyperbolic system
+adv.cfl            = 0.3     # cfl number for hyperbolic system
                              # In this test problem, the velocity is
 			     # time-dependent.  We could use 0.9 in
 			     # the 3D test, but need to use 0.7 in 2D
 			     # to satisfy CFL condition.
 
 adv.do_reflux = 1
+adv.diff1 = 0.95
 
 # Tagging
 adv.tagfrac = 0.06 		#	must be < 1 
 
 # PLOTFILES
-amr.plot_file  = Outputs_P12L0ld/plt    # root name of plot file
-amr.plot_int   = 25    # number of timesteps between plot files
+amr.plot_file  = Outputs_P12L0lt/plt    # root name of plot file
+amr.plot_int   = 10    # number of timesteps between plot files
 
 # CHECKPOINT
-amr.chk_file = Outputs_P12L0ld/chk      # root name of checkpoint file
+amr.chk_file = Outputs_P12L0lt/chk      # root name of checkpoint file
 amr.chk_int  = 100      # number of timesteps between checkpoint files
-amr.restart  = Outputs_P12L0ld/chk00500 # restart from this checkpoint file
+#amr.restart  = Outputs_P12L0lt/chk00500 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
 prob.probtag = 12
@@ -62,11 +65,14 @@ prob.v2		  	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.rad_blast	  = 0.0
 prob.ncellw		  = 5
-prob.ltube		  = 0.1
+prob.ltube		  = 0.05
 prob.lwall		  = 0.0
-prob.loffset	  = 0.1
+prob.loffset	  = 0.0
 prob.ylowall	  = 0
-#prob.inflow_time = 0.0005
+prob.inflow_time = 1e-4
+
+prob.pminfrac     = 0.001
+prob.rominfrac    = 0.001
 
 #	PROBE DETAILS
 aux.nprobes		  = 4

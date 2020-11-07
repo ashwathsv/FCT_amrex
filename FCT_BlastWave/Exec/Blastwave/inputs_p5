@@ -1,4 +1,4 @@
-max_step  = 300
+max_step  = 0
 stop_time = 0.18309677
 
 #	COMPONENTS
@@ -10,7 +10,7 @@ geometry.coord_sys   =  0       # 0 => cart
 # Domain size (m)
 geometry.prob_lo     =  0.0  0.0  1.0 
 geometry.prob_hi     =  10.0 10.0  1.0
-amr.n_cell           =  256  256   1
+amr.n_cell           =  512  512   1
 
 # VERBOSITY
 amr.v              = 1       # verbosity in Amr
@@ -18,7 +18,7 @@ amr.n_error_buf	   = 8
 amr.grid_eff	   = 0.7
 
 # REFINEMENT
-amr.max_level       = 0       # maximum level number allowed
+amr.max_level       = 2       # maximum level number allowed
 amr.ref_ratio       = 2 2 2 2 # refinement ratio
 amr.blocking_factor = 8       # block factor in grid generation
 amr.max_grid_size   = 256
@@ -39,13 +39,13 @@ adv.diff1 = 1.0
 adv.tagfrac = 0.06 		#	must be < 1 
 
 # PLOTFILES
-amr.plot_file  = Outputs_P5L0/plt    # root name of plot file
+amr.plot_file  = Outputs_P5L2/plt    # root name of plot file
 amr.plot_int   = 20    # number of timesteps between plot files
 
 # CHECKPOINT
-amr.chk_file = Outputs_P5L0/chk      # root name of checkpoint file
+amr.chk_file = Outputs_P5L2/chk      # root name of checkpoint file
 amr.chk_int  = 100      # number of timesteps between checkpoint files
-#amr.restart  = Outputs_P5L0/chk00117 # restart from this checkpoint file
+#amr.restart  = Outputs_P5L2/chk00117 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
 prob.probtag = 5
@@ -54,13 +54,13 @@ prob.probtag = 5
 prob.p2		  	  = 2026000.0				#	High pressure, in Pa
 prob.p1		  	  = 101300.0				#	Low pressure, in Pa
 prob.pfs 		  = 101300.0				#	Ambient pressure, in Pa
-prob.ro2		  = 1.0				#	Density of high pressure region, in kg/m3
-prob.ro1		  = 1.0				#	Density of low pressure region, in kg/m3
+prob.ro2		  = 2.815				#	Density of high pressure region, in kg/m3
+prob.ro1		  = 1.173				#	Density of low pressure region, in kg/m3
 prob.u2		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.u1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v2		  	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
-prob.rad_blast	  = 0.03
+prob.rad_blast	  = 0.025
 prob.xcm 	      = 0.0
 prob.ycm		  = 0.01
 

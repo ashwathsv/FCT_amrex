@@ -255,7 +255,7 @@ AmrCoreAdv::outletBC_partialwall (Box const& bx, Array4<Real> const& dest,
                   Real vmodlo = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) 
                               + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
                   Real mac = vmodlo/sslo;
-                  if(mac <= 1.0){
+                  if(mac < 1.0){
                     // vmod, sstmp, riem2 calculated at i = ilo
                     Real vmod = std::sqrt(std::pow(dest(ilo,j,k,rou),2.0) + std::pow(dest(ilo,j,k,rov),2.0))/dest(ilo,j,k,ro);
                     Real sstmp = std::sqrt(gamma*dest(ilo,j,k,pre)/dest(ilo,j,k,ro));

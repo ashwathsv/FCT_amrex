@@ -9,7 +9,7 @@ geometry.is_periodic =  0  0  1
 geometry.coord_sys   =  0       # 0 => cart
 # Domain size (m)
 geometry.prob_lo     =  0.0  0.0  1.0 
-geometry.prob_hi     =  2.0  2.0  1.0
+geometry.prob_hi     =  10.0  10.0  1.0
 amr.n_cell           =  128  128   1
 
 # VERBOSITY
@@ -18,7 +18,7 @@ amr.n_error_buf	   = 8
 amr.grid_eff	   = 0.7
 
 # REFINEMENT
-amr.max_level       = 0       # maximum level number allowed
+amr.max_level       = 3       # maximum level number allowed
 amr.ref_ratio       = 2 2 2 2 # refinement ratio
 amr.blocking_factor = 8       # block factor in grid generation
 amr.max_grid_size   = 256
@@ -38,13 +38,13 @@ adv.do_reflux = 1
 adv.tagfrac = 0.06 		#	must be < 1 
 
 # PLOTFILES
-amr.plot_file  = Outputs_P11L0/plt    # root name of plot file
+amr.plot_file  = Outputs_P11L3/plt    # root name of plot file
 amr.plot_int   = 15    # number of timesteps between plot files
 
 # CHECKPOINT
-amr.chk_file = Outputs_P11L0/chk      # root name of checkpoint file
+amr.chk_file = Outputs_P11L3/chk      # root name of checkpoint file
 amr.chk_int  = 100      # number of timesteps between checkpoint files
-#amr.restart  = Outputs_P11L0/chk00100 # restart from this checkpoint file
+#amr.restart  = Outputs_P11L3/chk00100 # restart from this checkpoint file
 
 # INITIAL CONDITIONS
 prob.probtag = 11
@@ -59,11 +59,12 @@ prob.u2		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.u1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v2		  	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
 prob.v1		 	  = 0.0				#	Centre of isentropic vortex (y-coordinate), in metres
-prob.rad_blast	  = 0.0
+prob.rad_blast	  = 0.01
 prob.ncellw		  = 5
-prob.ltube		  = 0.05
+prob.ltube		  = 0.0
 prob.lwall		  = 0.0
-prob.loffset	  = 0.1
+prob.loffset	  = 0.0
+prob.ylowall	  = 1
 #prob.inflow_time  = 0.0005
 
 #	PROBE DETAILS
