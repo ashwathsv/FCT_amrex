@@ -116,7 +116,7 @@ AmrCoreAdv::WriteCheckpointFile () const
     // etc.                these subdirectories will hold the MultiFab data at each level of refinement
 
     // checkpoint file name, e.g., chk00010
-    const std::string& checkpointname = amrex::Concatenate(chk_file,istep[0]);
+    const std::string& checkpointname = amrex::Concatenate(chk_file,istep[0],7);
 
     amrex::Print() << "Writing checkpoint " << checkpointname << "\n";
 
@@ -307,7 +307,7 @@ AmrCoreAdv::WriteErrFile () const
 std::string
 AmrCoreAdv::ErrFileName (int lev) const
 {
-    return amrex::Concatenate(err_file, lev, 5);
+    return amrex::Concatenate(err_file, lev, 7);
 }
 
 // put together an array of multifabs for writing
@@ -332,7 +332,7 @@ AmrCoreAdv::ErrFileVarNames () const
 std::string
 AmrCoreAdv::PlotFileName (int lev) const
 {
-    return amrex::Concatenate(plot_file, lev, 5);
+    return amrex::Concatenate(plot_file, lev, 7);
 }
 
 // put together an array of multifabs for writing

@@ -224,7 +224,7 @@ private:
 
     // Probes for measuring quantities varying with time
     Vector<int> iprobe, jprobe, proberank;
-    int nprobes = 0;
+    int nprobes = 0, lev_allow = 0;
     Real xcm = 0.0, ycm = 0.0, rad_bw = 0.01;
 
     Real p2, p1, ro2, ro1, u2, u1, v2, v1;

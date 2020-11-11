@@ -22,7 +22,8 @@ subroutine state_error(tag,tag_lo,tag_hi, &
                        set,clear,&
                        lo,hi,&
                        dx,problo,time,comp_lo,comp_hi,&
-                       maxgradpx,maxgradpy,tagfrac,rad_bw,lev) bind(C, name="state_error")
+                       maxgradpx,maxgradpy,tagfrac,rad_bw, &
+                       lev, max_level, lev_allow) bind(C, name="state_error")
 
   use amrex_fort_module, only : amrex_real
   ! use amrex_paralleldescriptor_module
@@ -30,7 +31,7 @@ subroutine state_error(tag,tag_lo,tag_hi, &
   ! use amrex_amr_module
   implicit none
   
-  integer          :: lo(3),hi(3),comp_lo,comp_hi,lev
+  integer          :: lo(3),hi(3),comp_lo,comp_hi,lev, max_level, lev_allow
   integer          :: state_lo(3),state_hi(3)
   integer          :: tag_lo(3),tag_hi(3)
   real(amrex_real) :: state(state_lo(1):state_hi(1), &
@@ -60,6 +61,8 @@ subroutine state_error(tag,tag_lo,tag_hi, &
   !     enddo
   !   ! endif
   ! else
+
+  if(lev < lev_allow) then
     do       k = lo(3), hi(3)
       do    j = lo(2), hi(2)
         do i = lo(1), hi(1)
@@ -72,6 +75,7 @@ subroutine state_error(tag,tag_lo,tag_hi, &
         enddo
       enddo
     enddo
+  endif
   ! endif
 
 end subroutine state_error

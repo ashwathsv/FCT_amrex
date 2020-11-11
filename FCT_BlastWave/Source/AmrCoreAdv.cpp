@@ -198,6 +198,12 @@ AmrCoreAdv::ReadParameters ()
     }
 
     {
+        ParmParse pp("amr");
+
+        pp.get("allow_level",lev_allow);
+    }
+
+    {
         ParmParse pp("aux");
         
         pp.query("nprobes",nprobes);
@@ -363,7 +369,7 @@ void AmrCoreAdv::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& ba
     {
         ParmParse pp("prob");
         pp.query("pminfrac",pminfrac);
-        pp.query("pminfrac",rominfrac);
+        pp.query("rominfrac",rominfrac);
     }
 
     if (lev > 0 && do_reflux) {
@@ -497,7 +503,7 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
             &tagval, &clearval,
             AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
             AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, &maxgradpx, &maxgradpy,
-            &tagfrac,&rad_bw,&lev);
+            &tagfrac,&rad_bw,&lev,&max_level,&lev_allow);
         //
         // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags
