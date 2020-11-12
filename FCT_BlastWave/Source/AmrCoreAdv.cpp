@@ -725,6 +725,9 @@ AmrCoreAdv::ComputeDt ()
     
     for (int lev = 0; lev <= finest_level; ++lev) {
     dt[lev] = dt[finest_level];
+    if(lev_allow < finest_level){
+        dt[lev] = dt[lev_allow];
+    }
     }
     // Print(myproc) << "rank= " << myproc << ", dt = " << dt[0] <<"\n";
 }
