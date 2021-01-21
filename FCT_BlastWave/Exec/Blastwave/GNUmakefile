@@ -8,14 +8,18 @@ PRECISION  = DOUBLE
 DEBUG      = TRUE
 # DEBUG      = FALSE
 
-DIM        = 2
-#DIM       = 3
+# DIM        = 2
+DIM       = 3
 
 COMP	   = gnu
 CXXSTD     = c++11
+INCLUDE_LOCATIONS += /usr/local/opt/llvm/include
+LIBRARY_LOCATIONS += /usr/local/opt/llvm/lib
+LIBRARIES += -lomp
 
 USE_MPI    = TRUE
 USE_OMP    = FALSE
+# USE_OMP    = TRUE
 
 Bpack   := ./Make.package 
 Blocs   := . 

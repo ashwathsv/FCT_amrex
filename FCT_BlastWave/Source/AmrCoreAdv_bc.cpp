@@ -14,6 +14,10 @@
 #include <AmrCoreAdv.H>
 #include <AmrCoreAdv_F.H>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 using namespace amrex;
 
 // ---------------------------------------------------------------------------

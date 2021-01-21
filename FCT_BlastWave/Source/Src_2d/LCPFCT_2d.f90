@@ -57,12 +57,13 @@ module LCPFCT_module
   integer :: i, j, k, n
   integer :: ilo, ihi, jlo, jhi, klo, khi
   real(amrex_real) :: dtdx, dtdy, coeff, dxdt, dydt, velmod, ss
+  real(amrex_real) :: umin, umax, flin, flout, temp
   integer :: ftx_lo(3), ftx_hi(3)
   integer :: fty_lo(3), fty_hi(3)
   integer :: ut_lo(3), ut_hi(3) 
 
   real(amrex_real), dimension(:,:,:,:), pointer, contiguous :: fltx, flty, utemp, frin, frout
-  real(amrex_real), dimension(:), pointer, contiguous :: umin, umax, flin, flout, temp
+  ! real(amrex_real), dimension(:), pointer, contiguous :: temp
 
   character(len=128) :: fname, levchar, rkchar
   write(levchar,fmt='(i2.2)') level
@@ -121,7 +122,9 @@ module LCPFCT_module
       utemp = uout(:,:,:,ro:pre)
     endif
 
+
     do n = ro,roE ! do not update pressure here
+      !$omp parallel do private(i,j,k)
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -147,12 +150,13 @@ module LCPFCT_module
           enddo
         enddo
       enddo
+      !$omp end parallel do
     enddo
-
+    
     if(level > 0) then
       ! zero order extrapolation for end points
-      ! do n = 0, nc-3
       do n = ro, pre
+        !$omp parallel do private(j,k)
         do k = klo, khi
           do j = jlo, jhi
             ucx(ilo-1,j,k,n)  = ucx(ilo,j,k,n);  ucx(ihi+1,j,k,n)  = ucx(ihi,j,k,n)
@@ -165,6 +169,7 @@ module LCPFCT_module
             uout(i,jlo-1,k,n) = uout(i,jlo,k,n); uout(i,jhi+1,k,n) = uout(i,jhi,k,n)
           enddo
         enddo
+        !$omp end parallel do
       enddo
     endif
 
@@ -190,7 +195,8 @@ module LCPFCT_module
       enddo
     endif
 
-    do n = ro,roE  
+    do n = ro,roE
+    !$omp parallel do private(i,j,k)  
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -204,12 +210,14 @@ module LCPFCT_module
           enddo
         enddo
       enddo
+      !$omp end parallel do
     enddo
 
     if(level > 0) then
       ! zero order extrapolation for end points
       do n = ro,roE
       ! do n = 0,nc-1
+      !$omp parallel do private(j,k)
         do k = klo, khi
           do j = jlo, jhi
             uout(ilo-1,j,k,n) = uout(ilo,j,k,n); uout(ihi+1,j,k,n) = uout(ihi,j,k,n);
@@ -218,6 +226,7 @@ module LCPFCT_module
             uout(i,jlo-1,k,n) = uout(i,jlo,k,n); uout(i,jhi+1,k,n) = uout(i,jhi,k,n);
           enddo
         enddo
+      !$omp end parallel do
       enddo
     endif
 
@@ -240,6 +249,7 @@ module LCPFCT_module
 
     ! update source terms and store results (ro^l) in uout
     do n = ro,roE
+      !$omp parallel do private(i,j,k) 
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
@@ -253,11 +263,13 @@ module LCPFCT_module
           enddo
         enddo
       enddo
+      !$omp end parallel do
     enddo
 
     if(level > 0) then
       ! zero order extrapolation for end points (only for levels other than level 0)
       do n = ro,roE
+        !$omp parallel do private(j,k)
         do k = klo, khi
           do j = jlo, jhi
             uout(ilo-1,j,k,n) = uout(ilo,j,k,n); uout(ihi+1,j,k,n) = uout(ihi,j,k,n);
@@ -266,6 +278,7 @@ module LCPFCT_module
             uout(i,jlo-1,k,n) = uout(i,jlo,k,n); uout(i,jhi+1,k,n) = uout(i,jhi,k,n);
           enddo
         enddo
+        !$omp end parallel do
       enddo
     endif  
 
@@ -305,39 +318,40 @@ module LCPFCT_module
       klo = lo(3);   khi = hi(3)
     endif
 
-    call bl_allocate(umin,ro,roE)
-    call bl_allocate(umax,ro,roE)
+    ! call bl_allocate(umin,ro,roE)
+    ! call bl_allocate(umax,ro,roE)
     call bl_allocate(frin,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),ro,roE)
     call bl_allocate(frout,ilo,ihi,jlo,jhi,ut_lo(3),ut_hi(3),ro,roE)
-    call bl_allocate(flin,ro,roE)
-    call bl_allocate(flout,ro,roE)
+    ! call bl_allocate(flin,ro,roE)
+    ! call bl_allocate(flout,ro,roE)
 
     ! Flux correction procedure (steps A, C-F in Devore)
     do n = ro,roE
     ! do n = 0,nc-1
+    !$omp parallel do private(i,j,k,umin,umax,flin,flout) 
       do k = lo(3), hi(3)
         do j = jlo, jhi
           do i = ilo, ihi
             ! Limits for conserved variables
-            umin(n) = min(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
-            umax(n) = max(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
+            umin = min(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
+            umax = max(utemp(i,j-1,k,n), utemp(i-1,j,k,n), utemp(i,j,k,n), utemp(i+1,j,k,n), utemp(i,j+1,k,n))
 
             ! calculate total incoming and outgoing antidiffusive fluxes in each cell
-            flin(n) = max(fltx(i,j,k,n),0.d0) - min(fltx(i+1,j,k,n),0.d0) &
+            flin = max(fltx(i,j,k,n),0.d0) - min(fltx(i+1,j,k,n),0.d0) &
             &       + max(flty(i,j,k,n),0.d0) - min(flty(i,j+1,k,n),0.d0)
 
-            flout(n) = max(fltx(i+1,j,k,n),0.d0) - min(fltx(i,j,k,n),0.d0) &
+            flout = max(fltx(i+1,j,k,n),0.d0) - min(fltx(i,j,k,n),0.d0) &
             &        + max(flty(i,j+1,k,n),0.d0) - min(flty(i,j,k,n),0.d0)
 
             ! calculate fractions of incoming and outgoing fluxes applied to each cell
-              frin(i,j,k,n) = (umax(n) - utemp(i,j,k,n))/(1E-16_amrex_real + flin(n))
-              frout(i,j,k,n) = (utemp(i,j,k,n) - umin(n))/(1E-16_amrex_real + flout(n))
+              frin(i,j,k,n) = (umax - utemp(i,j,k,n))/(1E-16_amrex_real + flin)
+              frout(i,j,k,n) = (utemp(i,j,k,n) - umin)/(1E-16_amrex_real + flout)
 
             if(isnan(frin(i,j,k,n))) then
              ! .and. n == 1 .or. (i == -1 .and. j == -1) .or. (i == -1 .and. j == 128)) then
                 print*,"location = (", i, ", ",j,"), Exiting..NaN found in frin (step C): ", &
-                &       "n= ", n, ", flin= ", flin(n), ", frin= ", frin(i,j,k,ro), ", ", frin(i,j,k,rou), &
-                &      ", ", frin(i,j,k,rov), ", ", frin(i,j,k,roE),", umin = ", umin(n), ", umax= ", umax(n), &
+                &       "n= ", n, ", flin= ", flin, ", frin= ", frin(i,j,k,ro), ", ", frin(i,j,k,rou), &
+                &      ", ", frin(i,j,k,rov), ", ", frin(i,j,k,roE),", umin = ", umin, ", umax= ", umax, &
                 &       ", utemp= ", uout(i,j,k,n), uout(i,j-1,k,n), uout(i-1,j,k,n), uout(i+1,j,k,n), uout(i,j+1,k,n)
                 ! if(isnan(frin(i,j,k,n))) then
                   call exit(123)
@@ -345,16 +359,17 @@ module LCPFCT_module
             endif 
             if(isnan(frout(i,j,k,n))) then
                 print*,"location = (", i, ", ",j,"), Exiting..NaN found in frout (step C): ", &
-                &       "n= ", n, ", flin= ", flout(n), ", frin= ", frout(i,j,k,ro), ", ", frout(i,j,k,rou), &
+                &       "n= ", n, ", flin= ", flout, ", frin= ", frout(i,j,k,ro), ", ", frout(i,j,k,rou), &
                 &      ", ", frout(i,j,k,rov), ", ", frout(i,j,k,roE) 
                 call exit(123)
             endif 
           enddo
         enddo
       enddo
+      !$omp end parallel do
     enddo
 
-    call bl_allocate(temp,ro,roE)
+    ! call bl_allocate(temp,ro,roE)
     ! call bl_allocate(temp,0,nc-1)
     if(level == 0) then
       ilo = lo(1); ihi = hi(1)+1
@@ -368,18 +383,20 @@ module LCPFCT_module
     ! calculate the corrected fluxes before updating the conserved variables
     do n = ro,roE
       ! update fluxes at faces whose normals are in x-direction (fltx)
+      !$omp parallel do private(i,j,k,temp)
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
-            temp(n) = fltx(i,j,k,n)
-            if(temp(n) >= 0.d0) then
-              fltx(i,j,k,n) = temp(n)*min(frout(i-1,j,k,n),frin(i,j,k,n),1.d0)
+            temp = fltx(i,j,k,n)
+            if(temp >= 0.d0) then
+              fltx(i,j,k,n) = temp*min(frout(i-1,j,k,n),frin(i,j,k,n),1.d0)
             else
-              fltx(i,j,k,n) = temp(n)*min(frin(i-1,j,k,n),frout(i,j,k,n),1.d0)
+              fltx(i,j,k,n) = temp*min(frin(i-1,j,k,n),frout(i,j,k,n),1.d0)
             endif
           enddo
         enddo
       enddo
+      !$omp end parallel do
     ! extrapolate to the end points (zero-order extrapolation)
     if(level > 0) then
       do k = ftx_lo(3), ftx_hi(3)
@@ -408,18 +425,20 @@ module LCPFCT_module
     endif
       ! update fluxes at faces whose normals are in y-direction (flty)
     do n = ro,roE
+      !$omp parallel do private(k,j,i,temp)
       do k = klo, khi
         do j = jlo, jhi
           do i = ilo, ihi
-            temp(n) = flty(i,j,k,n)
-            if(temp(n) >= 0.d0) then
-              flty(i,j,k,n) = temp(n)*min(frout(i,j-1,k,n),frin(i,j,k,n),1.d0)
+            temp = flty(i,j,k,n)
+            if(temp >= 0.d0) then
+              flty(i,j,k,n) = temp*min(frout(i,j-1,k,n),frin(i,j,k,n),1.d0)
             else
-              flty(i,j,k,n) = temp(n)*min(frin(i,j-1,k,n),frout(i,j,k,n),1.d0)
+              flty(i,j,k,n) = temp*min(frin(i,j-1,k,n),frout(i,j,k,n),1.d0)
             endif
           enddo
         enddo
       enddo
+      !$omp end parallel do
     ! extrapolate to the end points (zero-order extrapolation)
     if(level > 0) then
       do k = fty_lo(3), fty_hi(3)
@@ -449,6 +468,7 @@ module LCPFCT_module
     endif
 
     do n = ro,roE
+      !$omp parallel do private(k,j,i) collapse(3)
       do k = klo,khi
         do j = jlo,jhi
           do i = ilo,ihi
@@ -460,9 +480,11 @@ module LCPFCT_module
           enddo
         enddo
       enddo
+      !$omp end parallel do
     enddo
 
     ! update pressure and mach
+    !$omp parallel do private(k,j,i,ss,velmod) 
     do k = klo,khi
       do j = jlo,jhi
         do i = ilo,ihi
@@ -481,6 +503,7 @@ module LCPFCT_module
         enddo
       enddo
     enddo
+    !$omp end parallel do
     ! extrapolate to end points (zero-order extrapolation)
     if(level > 0) then
       do n = ro,mach
@@ -511,6 +534,7 @@ module LCPFCT_module
 
       do n = ro,roE
         ! scale x-fluxes
+        !$omp parallel do private(k,j,i) 
         do k = fx_lo(3), fx_hi(3)
           do j = fx_lo(2), fx_hi(2)
             do i = fx_lo(1), fx_hi(1)
@@ -518,8 +542,10 @@ module LCPFCT_module
             enddo
           enddo
         enddo
+        !$omp end parallel do
         
         ! scale y-fluxes
+        ! !$omp parallel do private(k,j,i) 
         do k = fy_lo(3), fy_hi(3)
           do j = fy_lo(2), fy_hi(2)
             do i = fy_lo(1), fy_hi(1)
@@ -527,21 +553,20 @@ module LCPFCT_module
             enddo
           enddo
         enddo
-
+        ! !$omp end parallel do
       enddo
     endif
     
     call bl_deallocate(fltx)
     call bl_deallocate(flty)
     call bl_deallocate(utemp)
-    call bl_deallocate(umin)
-    call bl_deallocate(umax)
-    call bl_deallocate(umin)
+    ! call bl_deallocate(umax)
+    ! call bl_deallocate(umin)
     call bl_deallocate(frin)
     call bl_deallocate(frout)
-    call bl_deallocate(flin)
-    call bl_deallocate(flout)
-    call bl_deallocate(temp)
+    ! call bl_deallocate(flin)
+    ! call bl_deallocate(flout)
+    ! call bl_deallocate(temp)
 
   endif
 

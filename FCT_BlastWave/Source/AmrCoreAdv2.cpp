@@ -14,6 +14,10 @@
 #include <AmrCoreAdv.H>
 #include <AmrCoreAdv_F.H>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 using namespace amrex;
 
 // Functions in this file (member functions of AmrCoreAdv)
@@ -39,7 +43,10 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
 
    if(probtag == 2){
     xcm = 0.5*(geom.ProbLo(0) + geom.ProbHi(0));
-    ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));  
+    ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1)); 
+#if AMREX_SPACEDIM==3 
+    zcm = 0.5*(geom.ProbLo(2) + geom.ProbHi(2));
+#endif
    }
    else if(probtag ==6 || probtag == 7){
     xcm = geom.ProbLo(0);
@@ -55,21 +62,35 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
    else{  
     xcm = geom.ProbLo(0);
     ycm = 0.5*(geom.ProbLo(1) + geom.ProbHi(1));
+#if AMREX_SPACEDIM==3 
+    zcm = 0.5*(geom.ProbLo(2) + geom.ProbHi(2));
+#endif
    }
 
    ParmParse pp("prob");
    pp.query("xcm", xcm);
    pp.query("ycm", ycm);
+   pp.query("zcm", zcm);
 
+
+#ifdef _OPENMP
+   #pragma omp parallel for 
+   {
+#endif
    for(int k = lo.z; k <= hi.z; ++k){
    		for(int j = lo.y; j <= hi.y; ++j){
    			for(int i = lo.x; i <= hi.x; ++i){
    				Real x = geom.ProbLo(0) + (i + 0.5)*geom.CellSize(0);
    				Real y = geom.ProbLo(1) + (j + 0.5)*geom.CellSize(1);
+          Real z = geom.ProbLo(2) + (k + 0.5)*geom.CellSize(2);
 
           Real dist = 0.0;
           if(probtag <= 5 || probtag == 11){
             dist = std::pow(x-xcm,2.0) + std::pow(y-ycm,2.0) - std::pow(rad_bw,2.0);
+#if AMREX_SPACEDIM==3
+            dist = std::pow(x-xcm,2.0) + std::pow(y-ycm,2.0) 
+                 + std::pow(z-zcm,2.0) - std::pow(rad_bw,2.0);
+#endif
           }else{
             dist = x-rad_bw;
           }
@@ -80,26 +101,42 @@ AmrCoreAdv::initBlastWave (int &lev, Box const& bx, Array4<Real> const& a, const
             a(i,j,k,ro) = ro2;
             a(i,j,k,rou) = ro2*(u2);
             a(i,j,k,rov) = ro2*(v2);
-            // a(i,j,k,rou) = ro2*(u2+du);
-            // a(i,j,k,rov) = ro2*(v2+dv);
             a(i,j,k,pre) = p2;
+#if AMREX_SPACEDIM==3
+            a(i,j,k,row) = ro2*(w2);
+#endif
           }else{
             a(i,j,k,ro) = ro1;
             a(i,j,k,rou) = ro1*(u1);
             a(i,j,k,rov) = ro1*(v1);
-            // a(i,j,k,rou) = ro1*(u1+du);
-            // a(i,j,k,rov) = ro1*(v1+dv);
-            a(i,j,k,pre) = p1;            
+            a(i,j,k,pre) = p1;
+#if AMREX_SPACEDIM==3
+            a(i,j,k,row) = ro1*(w1);
+#endif            
           }
+            Real ss = std::sqrt(gamma*a(i,j,k,pre)/a(i,j,k,ro));
+#if AMREX_SPACEDIM==2            
             a(i,j,k,roE) = a(i,j,k,pre)*c1 + 0.5*( ( std::pow(a(i,j,k,rou),2.0) 
                    + std::pow(a(i,j,k,rov),2.0) )/a(i,j,k,ro) );
-            Real ss = std::sqrt(gamma*a(i,j,k,pre)/a(i,j,k,ro));
             Real velmod = std::sqrt( std::pow(a(i,j,k,rou)/a(i,j,k,ro),2.0) 
                         + std::pow(a(i,j,k,rov)/a(i,j,k,ro),2.0) );
+#endif
+
+#if AMREX_SPACEDIM==3
+            a(i,j,k,roE) = a(i,j,k,pre)*c1 + 0.5*( ( std::pow(a(i,j,k,rou),2.0) 
+                   + std::pow(a(i,j,k,rov),2.0) + std::pow(a(i,j,k,row),2.0) )/a(i,j,k,ro) );
+            Real velmod = std::sqrt( std::pow(a(i,j,k,rou)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,rov)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,row),2.0) );            
+#endif   
             a(i,j,k,mach) = velmod/ss;
    			}
    		}
    }
+
+#ifdef _OPENMP
+   }
+#endif
 
 }
 
@@ -350,7 +387,12 @@ AmrCoreAdv::PlotFileMF () const
 Vector<std::string>
 AmrCoreAdv::PlotFileVarNames () const
 {
+#if AMREX_SPACEDIM==2
     return {"ro","rou","rov","roE","pre","Mach"};
+#endif
+#if AMREX_SPACEDIM==3
+    return {"ro","rou","rov","row","roE","pre","Mach"};
+#endif  
     // return {"ro"};
 }
 
@@ -368,6 +410,7 @@ AmrCoreAdv::WritePlotFile () const
 }
 
 // function to calculate pressure and entropy from conservative quantities (for testing purposes)
+#if AMREX_SPACEDIM==2
 void 
 AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const Geometry& geom)
 {
@@ -375,7 +418,9 @@ AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const 
    const auto hi = ubound(bx);
    const int nf = a.nComp();
 
-   for(int k = lo.z; k <= hi.z; ++k){
+  #pragma omp parallel for
+  {
+    for(int k = lo.z; k <= hi.z; ++k){
       for(int j = lo.y; j <= hi.y; ++j){
          for(int i = lo.x; i <= hi.x; ++i){
             a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
@@ -386,9 +431,39 @@ AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const 
             a(i,j,k,mach) = velmod/ss;
          }
       }
-   }
+    }
+  }
 
 }
+#endif
+
+#if AMREX_SPACEDIM==3
+void 
+AmrCoreAdv::CalcAuxillary (int lev, Box const& bx, Array4<Real> const& a, const Geometry& geom)
+{
+   const auto lo = lbound(bx);
+   const auto hi = ubound(bx);
+   const int nf = a.nComp();
+
+  #pragma omp parallel for
+  {
+    for(int k = lo.z; k <= hi.z; ++k){
+      for(int j = lo.y; j <= hi.y; ++j){
+         for(int i = lo.x; i <= hi.x; ++i){
+            a(i,j,k,pre) = (gamma-1)*( a(i,j,k,roE)
+            -   0.5*( ( pow(a(i,j,k,rou),2) + pow(a(i,j,k,rov),2) + pow(a(i,j,k,row),2) )/a(i,j,k,ro) ) );
+            Real ss = std::sqrt(gamma*a(i,j,k,pre)/a(i,j,k,ro));
+            Real velmod = std::sqrt( std::pow(a(i,j,k,rou)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,rov)/a(i,j,k,ro),2.0) 
+                        + std::pow(a(i,j,k,row)/a(i,j,k,ro),2.0) );
+            a(i,j,k,mach) = velmod/ss;
+         }
+      }
+    }
+  }
+
+}
+#endif
 
 Real
 AmrCoreAdv::get_gradp(int lev, Box const& validbox, Array4<Real const> const& a, int dir)
@@ -402,6 +477,9 @@ AmrCoreAdv::get_gradp(int lev, Box const& validbox, Array4<Real const> const& a,
    Real dx[2];
    dx[0] = geom1.CellSize(0);
    dx[1] = geom1.CellSize(1);
+#if AMREX_SPACEDIM==3
+   dx[2] = geom1.CellSize(2);
+#endif
    int myproc = ParallelDescriptor::MyProc();
 
     if(dir == 0){
@@ -426,6 +504,17 @@ AmrCoreAdv::get_gradp(int lev, Box const& validbox, Array4<Real const> const& a,
                 }
             }
         }        
+    }else if(dir == 2){
+        for     (int k = lo.z; k <= hi.z; ++k) {
+            for   (int j = lo.y; j <= hi.y; ++j) {
+                for (int i = lo.x; i <= hi.x; ++i) {
+                    gradp = 0.5*(a(i,j,k+1,pre) - a(i,j,k-1,pre))/dx[2];
+                    if (fabs(gradp) > fabs(gradpmax)){
+                        gradpmax = gradp;
+                    }
+                }
+            }
+        }       
     }
    // Print(ParallelDescriptor::MyProc()) << "rank= " << myproc << "gradromax= " << gradromax << "\n";
     return fabs(gradpmax);
@@ -448,10 +537,21 @@ AmrCoreAdv::GetProbeDets ()
     for(int n = 0; n < nprobes; ++n){
       Real xprobe = geom1.ProbLo(0) + (iprobe[n] + 0.5)*geom1.CellSize(0);
       Real yprobe = geom1.ProbLo(1) + (jprobe[n] + 0.5)*geom1.CellSize(1);
+#if AMREX_SPACEDIM==2
       if(xprobe < geom1.ProbLo(0) || xprobe > geom1.ProbHi(0) || 
          yprobe < geom1.ProbLo(1) || yprobe > geom1.ProbHi(1)  ){
           amrex::Error("Point for probe not found in domain, exiting...");
       }
+#endif
+
+#if AMREX_SPACEDIM==3
+      Real zprobe = geom1.ProbLo(2) + (kprobe[n] + 0.5)*geom1.CellSize(2);
+      if(xprobe < geom1.ProbLo(0) || xprobe > geom1.ProbHi(0) || 
+         yprobe < geom1.ProbLo(1) || yprobe > geom1.ProbHi(1) ||
+         zprobe < geom1.ProbLo(2) || zprobe > geom1.ProbHi(2) ){
+          amrex::Error("Point for probe not found in domain, exiting...");
+      }
+#endif
       // find out which rank has the point to be probed
       for (MFIter mfi(phi); mfi.isValid(); ++mfi)
       {
@@ -461,15 +561,29 @@ AmrCoreAdv::GetProbeDets ()
         //  Function to print results
         FArrayBox& mfab = phi[mfi];
         Array4<Real> const& a = mfab.array();
-        for     (int k = lo.z; k <= hi.z; ++k) {
-          for   (int j = lo.y; j <= hi.y; ++j) {
-            for (int i = lo.x; i <= hi.x; ++i) {
-              if(i == iprobe[n] && j == jprobe[n]){
-                Print(myproc) << "point is present in rank= " << myproc << ", lo.x= " << lo.x << 
-                ", hi.x= " << hi.x << ", lo.y= " << lo.y << ", hi.y= " << hi.y << ", iprobe= "
-                << iprobe[n] << ", jprobe= " << jprobe[n] << ", xprobe= " << xprobe
-                << ", yprobe= " << yprobe << "\n";
-                proberank[n] = myproc;
+        #pragma omp parallel for
+        {
+          for     (int k = lo.z; k <= hi.z; ++k) {
+            for   (int j = lo.y; j <= hi.y; ++j) {
+              for (int i = lo.x; i <= hi.x; ++i) {
+#if AMREX_SPACEDIM==2
+                if(i == iprobe[n] && j == jprobe[n]){
+                  Print(myproc) << "point is present in rank= " << myproc << ", lo.x= " << lo.x << 
+                  ", hi.x= " << hi.x << ", lo.y= " << lo.y << ", hi.y= " << hi.y << ", iprobe= "
+                  << iprobe[n] << ", jprobe= " << jprobe[n] << ", xprobe= " << xprobe
+                  << ", yprobe= " << yprobe << "\n";
+                  proberank[n] = myproc;
+                }
+#endif
+#if AMREX_SPACEDIM==3
+                if(i == iprobe[n] && j == jprobe[n] && k == kprobe[n]){
+                  Print(myproc) << "point is present in rank= " << myproc << ", lo.x= " << lo.x << 
+                  ", hi.x= " << hi.x << ", lo.y= " << lo.y << ", hi.y= " << hi.y << ", iprobe= "
+                  << iprobe[n] << ", jprobe= " << jprobe[n] << ", kprobe= " << kprobe[n]
+                  << ", xprobe= " << xprobe << ", yprobe= " << yprobe << ", zprobe= " << zprobe << "\n";
+                  proberank[n] = myproc;
+                }
+#endif
               }
             }
           }
@@ -503,6 +617,9 @@ AmrCoreAdv::WriteProbeFile (int lev, Real cur_time, int stepnum)
 
       Real xprobe = geom1.ProbLo(0) + (iprobe[n] + 0.5)*geom1.CellSize(0);
       Real yprobe = geom1.ProbLo(1) + (jprobe[n] + 0.5)*geom1.CellSize(1);
+#if AMREX_SPACEDIM==3
+      Real zprobe = geom1.ProbLo(2) + (kprobe[n] + 0.5)*geom1.CellSize(2);
+#endif
 
       if(proberank[n] == myproc){
         std::ofstream ofs;
@@ -512,6 +629,9 @@ AmrCoreAdv::WriteProbeFile (int lev, Real cur_time, int stepnum)
           Print(myproc,ofs) << "# time ro rou rov roE pre mach" << "\n";
           Print(myproc,ofs) << "# x = " << xprobe << "\n";
           Print(myproc,ofs) << "# y = " << yprobe << "\n";
+#if AMREX_SPACEDIM==3
+          Print(myproc,ofs) << "# z = " << zprobe << "\n";
+#endif
         }else{
           ofs.open(filename, std::ofstream::app);
         }
@@ -521,13 +641,25 @@ AmrCoreAdv::WriteProbeFile (int lev, Real cur_time, int stepnum)
           const auto hi = ubound(box);
           FArrayBox& mfab = phi[mfi];
           Array4<Real> const& a = mfab.array(); 
+#if AMREX_SPACEDIM==2
           Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << cur_time << "\t" 
           << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,ro)  << "\t" 
           << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,rou) << "\t"
           << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,rov) << "\t" 
           << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,roE) << "\t" 
           << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,pre) << "\t"
-          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,mach) << "\n";               
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],lo.z,mach) << "\n";
+#endif
+#if AMREX_SPACEDIM==3
+          Print(myproc, ofs).SetPrecision(8) << std::left << std::setw(12) << cur_time << "\t" 
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],ro)  << "\t" 
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],rou) << "\t"
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],rov) << "\t" 
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],row) << "\t"
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],roE) << "\t" 
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],pre) << "\t"
+          << std::left << std::setw(12) << a(iprobe[n],jprobe[n],kprobe[n],mach) << "\n";          
+#endif               
         }
         ofs.close();
 

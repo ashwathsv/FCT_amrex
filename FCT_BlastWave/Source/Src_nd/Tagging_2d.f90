@@ -41,8 +41,8 @@ subroutine state_error(tag,tag_lo,tag_hi, &
   real(amrex_real) :: problo(3), dx(3), time, maxgradpx, maxgradpy, tagfrac, rad_bw
   integer          :: set,clear
 
-  integer          :: i, j, k, rank
-  real(amrex_real) :: dro, xcm, ycm, mid(2), gradpx, gradpy, dist
+  integer          :: i, j, k
+  real(amrex_real) :: dro, gradpx, gradpy
   integer, parameter :: ro = 0, rou = 1, rov = 2, roE = 3, pre = 4
 
   ! rank = amrex_pd_myproc()
@@ -63,6 +63,7 @@ subroutine state_error(tag,tag_lo,tag_hi, &
   ! else
 
   if(lev < lev_allow) then
+  !$omp parallel do private(i,j,k,gradpx,gradpy) collapse(3)
     do       k = lo(3), hi(3)
       do    j = lo(2), hi(2)
         do i = lo(1), hi(1)
@@ -75,6 +76,7 @@ subroutine state_error(tag,tag_lo,tag_hi, &
         enddo
       enddo
     enddo
+  !$omp end parallel do
   endif
   ! endif
 

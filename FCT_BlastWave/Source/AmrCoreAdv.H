@@ -216,18 +216,28 @@ private:
     std::string chk_file {"chk"};
     int chk_int = -1;
 
+#if AMREX_SPACEDIM==2
     int ncomp  = 6;
     const int ro = 0, rou = 1, rov = 2, roE = 3, pre = 4, mach = 5;
+#endif
+#if AMREX_SPACEDIM==3
+    int ncomp  = 7;
+    const int ro = 0, rou = 1, rov = 2, row = 3, roE = 4, pre = 5, mach = 6;
+#endif
     int nghost = 4;
     int max_rk = 2;
     int probtag = -1;
 
     // Probes for measuring quantities varying with time
-    Vector<int> iprobe, jprobe, proberank;
+    Vector<int> iprobe, jprobe, kprobe, proberank;
     int nprobes = 0, lev_allow = 0;
-    Real xcm = 0.0, ycm = 0.0, rad_bw = 0.01;
+    Real xcm = 0.0, ycm = 0.0, zcm = 0.0, rad_bw = 0.01;
 
     Real p2, p1, ro2, ro1, u2, u1, v2, v1;
+
+#if AMREX_SPACEDIM==3
+    Real w2, w1;
+#endif
 
     Real diff1 = 1.0, pmin, romin;
 

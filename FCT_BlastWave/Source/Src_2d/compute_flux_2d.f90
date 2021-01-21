@@ -39,6 +39,7 @@ subroutine compute_con_flux(level, nc, lo, hi,  &
     flxx(:,:,:,pre:ent) = 0.0_amrex_real
     flxy(:,:,:,pre:ent) = 0.0_amrex_real
 
+    !$omp parallel do private(k,j,i)
       do k = fx_lo(3), fx_hi(3)
         do j = fx_lo(2), fx_hi(2)
           do i = fx_lo(1) + 1, fx_hi(1) - 1
@@ -61,6 +62,7 @@ subroutine compute_con_flux(level, nc, lo, hi,  &
           enddo
         enddo
       enddo
+    !$omp end parallel do
 
       ! zero-order extrapolation for end points of fx
       do n = ro,pre
@@ -72,6 +74,7 @@ subroutine compute_con_flux(level, nc, lo, hi,  &
         enddo
       enddo
 
+      !$omp parallel do private(k,j,i)
       do k = fy_lo(3), fy_hi(3)
         do j = fy_lo(2) + 1, fy_hi(2) - 1
           do i = fy_lo(1), fy_hi(1)
@@ -92,6 +95,7 @@ subroutine compute_con_flux(level, nc, lo, hi,  &
           enddo
         enddo
       enddo
+      !$omp end parallel do
 
       ! zero-order extrapolation for end points of fx
       do n = ro,ent
@@ -144,20 +148,22 @@ subroutine compute_diff_flux( level, nc, dtdx, dtdy, lo, hi,  &
   dydt = 1.d0/dtdy
 
   ! calculate the diffusion fluxes in x-direction (do not include the last cell)
-  do k = fdx_lo(3), fdx_hi(3)
-    do j = fdx_lo(2), fdx_hi(2)
-      do i = fdx_lo(1)+1, fdx_hi(1)-1
+  !$omp parallel do private(n,k,j,i,epsx,nux)
+  do n = ro,roE
+    do k = fdx_lo(3), fdx_hi(3)
+      do j = fdx_lo(2), fdx_hi(2)
+        do i = fdx_lo(1)+1, fdx_hi(1)-1
         ! epsx = dtdx*vx(i,j)  
         ! write epsx in terms of velocity at the beginning of the timestep
         ! get vx using the conserved variables
-        epsx = dtdx*half*((u0(i-1,j,k,rou)/u0(i-1,j,k,ro)) + (u0(i,j,k,rou)/u0(i,j,k,ro)))
-        nux  = one6 + one3*(epsx**2)
-        do n = ro,roE
+          epsx = dtdx*half*((u0(i-1,j,k,rou)/u0(i-1,j,k,ro)) + (u0(i,j,k,rou)/u0(i,j,k,ro)))
+          nux  = one6 + one3*(epsx**2)
           fldx(i,j,k,n) = nux*dxdt*(u0(i-1,j,k,n) - u0(i,j,k,n))    
+          enddo
         enddo
       enddo
-    enddo
   enddo
+  !$omp end parallel do
 
   ! zero-order extrapolation for end points of fldx
   do n = ro,roE
@@ -171,6 +177,7 @@ subroutine compute_diff_flux( level, nc, dtdx, dtdy, lo, hi,  &
   ! endif
 
   ! calculate the diffusion fluxes in y-direction (do not include the end cells)
+  !$omp parallel do private(n,k,j,i,epsy,nuy)
   do n = ro,roE
     do k = fdy_lo(3), fdy_hi(3)
       do j = fdy_lo(2)+1, fdy_hi(2)-1
@@ -183,6 +190,7 @@ subroutine compute_diff_flux( level, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
+  !$omp end parallel do
 
   ! zero-order extrapolation for end points of fldy
   do n = ro, roE
@@ -227,6 +235,7 @@ subroutine compute_source_flux( level, nc, dtdx, dtdy, lo, hi,  &
   flsx(:,:,:,ro) = 0.0_amrex_real
   flsy(:,:,:,ro) = 0.0_amrex_real
   
+  !$omp parallel do private(k,j,i)
   do k = fsx_lo(3), fsx_hi(3)
     do j = fsx_lo(2), fsx_hi(2)
       do i = fsx_lo(1)+1, fsx_hi(1)-1
@@ -239,6 +248,7 @@ subroutine compute_source_flux( level, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
+  !$omp end parallel do
 
   ! zero-order extrapolation for end points of flsx
   do n = rou,roE
@@ -252,6 +262,7 @@ subroutine compute_source_flux( level, nc, dtdx, dtdy, lo, hi,  &
 ! endif
 
   ! update source terms corresponding to y-direction
+  !$omp parallel do private(k,j,i)
   do k = fsy_lo(3), fsy_hi(3)
     do j = fsy_lo(2)+1,fsy_hi(2)-1
       do i = fsy_lo(1),fsy_hi(1)
@@ -263,6 +274,7 @@ subroutine compute_source_flux( level, nc, dtdx, dtdy, lo, hi,  &
       enddo
     enddo
   enddo
+  !$omp end parallel do
 
   ! zero order extrapolation to end points of flsy
   do n = rou, roE 

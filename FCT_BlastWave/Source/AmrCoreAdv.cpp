@@ -14,6 +14,10 @@
 #include <AmrCoreAdv.H>
 #include <AmrCoreAdv_F.H>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 using namespace amrex;
 
 // constructor - reads in parameters from inputs file
@@ -21,6 +25,14 @@ using namespace amrex;
 //             - initializes BCRec boundary condition object
 AmrCoreAdv::AmrCoreAdv ()
 {
+#ifdef _OPENMP
+    #pragma omp parallel
+    #pragma omp master
+    {
+        Print(0) << "Running with " <<  omp_get_num_threads() << " thread(s)\n";
+    }
+#endif
+
     ReadParameters();
 
     // Geometry on all levels has been defined already.
@@ -46,8 +58,7 @@ AmrCoreAdv::AmrCoreAdv ()
     bcs.resize(ncomp);
 
     // Print() << "probtag= " << probtag << "\n";
-
-    //  Set periodic BCs in y-direction
+#if AMREX_SPACEDIM==2
     if(probtag == 1){
         for(int n = 0; n < ncomp; ++n){
             bcs[n].setLo(0, BCType::reflect_even);
@@ -139,7 +150,35 @@ AmrCoreAdv::AmrCoreAdv ()
             bcs[n].setHi(0, BCType::foextrap);
             bcs[n].setHi(1, BCType::foextrap);            
         }     
-    }  
+    }
+#endif
+
+#if AMREX_SPACEDIM==3
+    if(probtag == 1){
+        for(int n = 0; n < ncomp; ++n){
+            bcs[n].setLo(0, BCType::reflect_even);
+            bcs[n].setHi(0, BCType::foextrap);
+            for(int i = 1; i < AMREX_SPACEDIM; ++i){
+                bcs[n].setLo(i, BCType::foextrap);
+                bcs[n].setHi(i, BCType::foextrap);
+            }         
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+    }else if(probtag == 2){
+        for(int n = 0; n < ncomp; ++n){
+            for(int i = 0; i < AMREX_SPACEDIM; ++i){
+                bcs[n].setLo(i, BCType::reflect_even);
+                bcs[n].setHi(i, BCType::reflect_even);
+            }         
+        }
+        bcs[rou].setLo(0, BCType::reflect_odd);
+        bcs[rou].setHi(0, BCType::reflect_odd);
+        bcs[rov].setLo(1, BCType::reflect_odd);
+        bcs[rov].setHi(1, BCType::reflect_odd);
+        bcs[row].setLo(2, BCType::reflect_odd);
+        bcs[row].setHi(2, BCType::reflect_odd);
+    }
+#endif  
     // stores fluxes at coarse-fine interface for synchronization
     // this will be sized "nlevs_max+1"
     // NOTE: the flux register associated with flux_reg[lev] is associated
@@ -193,6 +232,10 @@ AmrCoreAdv::ReadParameters ()
         pp.get("u1",u1);
         pp.get("v2",v2);
         pp.get("v1",v1);
+#if AMREX_SPACEDIM==3
+        pp.get("w2",w2);
+        pp.get("w1",w1);
+#endif        
         pp.query("rad_blast",rad_bw);
         pp.get("probtag",probtag);              
     }
@@ -203,6 +246,7 @@ AmrCoreAdv::ReadParameters ()
         pp.get("allow_level",lev_allow);
     }
 
+#if AMREX_SPACEDIM==2
     {
         ParmParse pp("aux");
         
@@ -215,6 +259,23 @@ AmrCoreAdv::ReadParameters ()
             }
         }               
     }
+#endif
+#if AMREX_SPACEDIM==3
+    {
+        ParmParse pp("aux");
+        
+        pp.query("nprobes",nprobes);
+        if(nprobes > 0){
+            pp.getarr("iprobes", iprobe);
+            pp.getarr("jprobes", jprobe);
+            pp.getarr("kprobes", kprobe);
+            if(iprobe.size() != nprobes || jprobe.size() != nprobes || kprobe.size() != nprobes){
+                amrex::Error("Coorodinate vector of probes does not equal number of probes");
+            }
+        }               
+    }
+#endif
+
 }
 
 // initializes multilevel data
@@ -226,7 +287,7 @@ AmrCoreAdv::InitData ()
         // start simulation from the beginning
         const Real time = 0.0;
         InitFromScratch(time);
-        ParallelDescriptor::Barrier();
+        // ParallelDescriptor::Barrier();
         AverageDown();
         ParallelDescriptor::Barrier();
 
@@ -240,8 +301,8 @@ AmrCoreAdv::InitData ()
 
         if(nprobes > 0){
             AmrCoreAdv::GetProbeDets();
+            AmrCoreAdv::WriteProbeFile(0, 0.0, 0);
         }
-        AmrCoreAdv::WriteProbeFile(0, 0.0, 0);
     }
     else {
         // restart from a checkpoint
@@ -252,13 +313,6 @@ AmrCoreAdv::InitData ()
         }
     }
 
-    // BoxArray ba = phi_new[0].boxArray();
-    // const DistributionMapping& dm = phi_new[0].DistributionMap();
-    // exact.define(ba,dm,6,0);
-    // // err.define(ba,dm,3,0);
-    // MultiFab::Copy(exact,phi_new[0],0,0,3,0);
-    // MultiFab::Copy(exact,phi_new[0],0,3,3,0);
-    // MultiFab::Subtract(exact, exact,0,3,3,0);
     ParallelDescriptor::Barrier();
 }
 
@@ -454,10 +508,10 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
     int comp_lo = ro;
     int comp_hi = pre;
     Real maxgradpx = 0.0, maxgradpy = 0.0, gradpxtemp, gradpytemp;
-
-#ifdef _OPENMP
-#pragma omp parallel
+#if AMREX_SPACEDIM==3
+    Real maxgradpz = 0.0, gradpztemp;
 #endif
+
     {
         Vector<int>  itags;
 
@@ -474,14 +528,22 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
             if(fabs(gradpytemp) > fabs(maxgradpy)){
                 maxgradpy = gradpytemp;
             }
+
+#if AMREX_SPACEDIM==3
+            gradpytemp = get_gradp(lev, tmpbox, a, 2);
+            if(fabs(gradpztemp) > fabs(maxgradpz)){
+                maxgradpz = gradpztemp;
+            }            
+#endif
         }
     // Get global maximum of pressure gradient (use this as criterion for refinement)
     ParallelDescriptor::ReduceRealMax(maxgradpx);
     ParallelDescriptor::ReduceRealMax(maxgradpy);
+    ParallelDescriptor::ReduceRealMax(maxgradpz);
 
     for (MFIter mfi(state,true); mfi.isValid(); ++mfi)
     {
-        const Box& validbox  = mfi.validbox();
+        const Box& validbox  = mfi.tilebox();
 
         TagBox&     tagfab  = tags[mfi];
 
@@ -498,12 +560,23 @@ AmrCoreAdv::ErrorEst (int lev, TagBoxArray& tags, Real time, int ngrow)
 
         //Function to calculate the maximum pressure gradient and establish refinement criterion
             // tag cells for refinement
+#if AMREX_SPACEDIM==2
         state_error(tptr,  AMREX_ARLIM_3D(tlo), AMREX_ARLIM_3D(thi),
             BL_TO_FORTRAN_3D(state[mfi]),
             &tagval, &clearval,
             AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
             AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, &maxgradpx, &maxgradpy,
             &tagfrac,&rad_bw,&lev,&max_level,&lev_allow);
+#endif
+#if AMREX_SPACEDIM==3
+        state_error(tptr,  AMREX_ARLIM_3D(tlo), AMREX_ARLIM_3D(thi),
+            BL_TO_FORTRAN_3D(state[mfi]),
+            &tagval, &clearval,
+            AMREX_ARLIM_3D(validbox.loVect()), AMREX_ARLIM_3D(validbox.hiVect()),
+            AMREX_ZFILL(dx), AMREX_ZFILL(prob_lo), &time, &comp_lo, &comp_hi, 
+            &maxgradpx, &maxgradpy, &maxgradpz,
+            &tagfrac,&rad_bw,&lev,&max_level,&lev_allow);        
+#endif
         //
         // Now update the tags in the TagBox in the tilebox region
             // to be equal to itags
@@ -663,7 +736,9 @@ AmrCoreAdv::Evolve ()
 	    WritePlotFile();
         // WriteErrFile();
 	}
-    AmrCoreAdv::WriteProbeFile(0, cur_time, step);
+    if(nprobes > 0){
+        AmrCoreAdv::WriteProbeFile(0, cur_time, step);
+    }
 
         if (chk_int > 0 && (step+1) % chk_int == 0) {
             WriteCheckpointFile();
@@ -749,11 +824,8 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
     int nc = phi_new[lev].nComp();
     int ng = nghost;
     Real dt_calc = 0.0;
-    Real umax = 0.0, vmax = 0.0;
+    Real umax = 0.0, vmax = 0.0, wmax = 0.0;
 
-#ifdef _OPENMP
-#pragma omp parallel reduction(min:dt_est)
-#endif
     {
        FArrayBox uface[BL_SPACEDIM];
 
@@ -768,6 +840,7 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
             const int* lo  = box.loVect();
             const int* hi  = box.hiVect();
 
+#if AMREX_SPACEDIM==2
            get_face_velocity_dt(&lev, &cur_time,
                      AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
                      BL_TO_FORTRAN(uface[1]),
@@ -778,6 +851,17 @@ AmrCoreAdv::EstTimeStep (int lev, bool local)
             // Print(myproc) << "rank= " << myproc << ", umax= " << umax << ", vmax= " << vmax
             // << "dx= "<< geom[lev].CellSize(0) << ", dy= " << geom[lev].CellSize(1) << "\n";
         dt_calc = std::min(geom[lev].CellSize(0)/umax, geom[lev].CellSize(1)/vmax);
+#endif
+#if AMREX_SPACEDIM==3
+           get_face_velocity_dt(&lev, &cur_time,
+                     AMREX_D_DECL(BL_TO_FORTRAN(uface[0]),
+                     BL_TO_FORTRAN(uface[1]),
+                     BL_TO_FORTRAN(uface[2])),
+                     dx, prob_lo, &umax, &vmax, &wmax, &nc,
+                     BL_TO_FORTRAN_3D(S_new[mfi]), 
+                     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi));
+        dt_calc = std::min(std::min(geom[lev].CellSize(0)/umax, geom[lev].CellSize(1)/vmax), geom[lev].CellSize(2)/wmax);        
+#endif
         dt_est = std::min(dt_est, dt_calc);
        }
     }
@@ -951,15 +1035,27 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
     MultiFab Sconvx(grids[lev], dmap[lev], S_new.nComp(), num_grow);
     MultiFab Sconvy(grids[lev], dmap[lev], S_new.nComp(), num_grow);
 
-    // Print(myproc) << "rank= " << myproc << ", does S_new contains nan before FillPatch? " << S_new.contains_nan() 
-    // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << ", max p = " 
-    // << S_new.norm0(pre) << "\n";
+#if AMREX_SPACEDIM==3
+    MultiFab Sconvz(grids[lev], dmap[lev], S_new.nComp(), num_grow);
+#endif
 
     ParallelDescriptor::Barrier();
     if(lev == 0){
         FillPatch(lev, time, Sconvx, 0, Sconvx.nComp());
         FillPatch(lev, time, Sconvy, 0, Sconvy.nComp());
         FillPatch(lev, time, S_new, 0, S_new.nComp());
+#if AMREX_SPACEDIM==3
+        FillPatch(lev, time, Sconvz, 0, Sconvz.nComp());
+#endif
+        for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
+        {
+            const Box& box = mfi.tilebox();
+            FArrayBox& fab = phi_new[lev][mfi];
+            Array4<Real> const& a = fab.array();
+            CalcAuxillary (lev, box, a, geom[lev]);
+        }//for(MFIter)
+
+        ParallelDescriptor::Barrier();
 
         S_new.FillBoundary();
         S_new.FillBoundary(geom1.periodicity());
@@ -970,10 +1066,26 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
         Sconvy.FillBoundary();
         AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
         Sconvy.FillBoundary(geom1.periodicity());
+#if AMREX_SPACEDIM==3
+        Sconvz.FillBoundary();
+        AmrCoreAdv::FillDomainBoundary(Sconvz,geom1,bcs,time);
+        Sconvz.FillBoundary(geom1.periodicity());        
+#endif
     }else{
         FillCoarsePatch(lev, time, Sconvx, 0, Sconvx.nComp());
         FillCoarsePatch(lev, time, Sconvy, 0, Sconvy.nComp());
         FillCoarsePatch(lev, time, S_new, 0, S_new.nComp());
+#if AMREX_SPACEDIM==3
+        FillCoarsePatch(lev, time, Sconvz, 0, Sconvz.nComp());
+#endif
+        for (MFIter mfi(phi_new[lev], true); mfi.isValid(); ++mfi)
+        {
+            const Box& box = mfi.tilebox();
+            FArrayBox& fab = phi_new[lev][mfi];
+            Array4<Real> const& a = fab.array();
+            CalcAuxillary (lev, box, a, geom[lev]);
+        }//for(MFIter)
+        ParallelDescriptor::Barrier();
 
         S_new.FillBoundary();
         S_new.FillBoundary(geom1.periodicity());
@@ -983,22 +1095,33 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
         AmrCoreAdv::FillDomainBoundary(Sconvx,geom1,bcs,time);
         Sconvy.FillBoundary();
         AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
-        Sconvy.FillBoundary(geom1.periodicity());       
+        Sconvy.FillBoundary(geom1.periodicity());
+#if AMREX_SPACEDIM==3
+        Sconvz.FillBoundary();
+        AmrCoreAdv::FillDomainBoundary(Sconvz,geom1,bcs,time);
+        Sconvz.FillBoundary(geom1.periodicity());        
+#endif       
     }
     // Print(myproc) << "rank= " << myproc << ", does S_new contains nan after FillPatch? " << S_new.contains_nan() 
     // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << ", max p = " 
     // << S_new.norm0(pre) << "\n";
+    if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0 || S_new.min(mach,ngrow) < 0.0 || S_new.min(roE,ngrow) < 0.0){
+        Print() << "Level (after FillPatch) = " << lev << "\n";
+        Print() << "min ro= " << S_new.min(ro,ngrow) 
+                << ", min pre= " << S_new.min(pre,ngrow) << ", min roE= " << S_new.min(roE,ngrow)
+                << ", min mach= " << S_new.min(mach,ngrow) <<"\n";
+        WritePlotFile();
+        amrex::Error("Pressure/density/Mach number is negative, aborting...");
+    }
 
     ParallelDescriptor::Barrier();
 
-#ifdef _OPENMP
-#pragma omp parallel
-#endif
     {
 	   FArrayBox flux[BL_SPACEDIM], uface[BL_SPACEDIM];
 
        for(int rk = 1 ; rk <= rk_max ; ++rk){
         for(int fct_step = 1 ; fct_step <= 2 ; ++fct_step){
+
             for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi)
             {
                 const Box& bx = mfi.tilebox();
@@ -1012,6 +1135,12 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                 FArrayBox& statey   = Sconvy[mfi];
                 FArrayBox& stateout = S_new[mfi];
                 FArrayBox& stateold = S_old[mfi];
+
+#if AMREX_SPACEDIM==3
+                FArrayBox& wvel = uface1[2][mfi];
+                FArrayBox& flxz = flux1[2][mfi];
+                FArrayBox& statez   = Sconvz[mfi];
+#endif
 
                 const int* lo  = bx.loVect();
                 const int* hi  = bx.hiVect();
@@ -1027,6 +1156,7 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
 
                 // compute velocities on faces (prescribed function of space and time)
                 if(fct_step == 1){
+#if AMREX_SPACEDIM==2
                         get_face_velocity(&lev, &ctr_time, 
                             AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                             AMREX_D_DECL(BL_TO_FORTRAN(uvel),
@@ -1035,9 +1165,22 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                             dx, prob_lo, 
                             BL_TO_FORTRAN_3D(stateold), 
                             &nc);
+#endif
+
+#if AMREX_SPACEDIM==3
+                        get_face_velocity(&lev, &ctr_time, 
+                            AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
+                            AMREX_D_DECL(BL_TO_FORTRAN(uvel),
+                            BL_TO_FORTRAN(vvel),
+                            BL_TO_FORTRAN(wvel)),
+                            dx, prob_lo, 
+                            BL_TO_FORTRAN_3D(stateold), 
+                            &nc);
+#endif
                 }//if(fct_step==1)
 
                 //advection step (solve the conservation equations & compute new state)
+#if AMREX_SPACEDIM==2
                 advect(&lev, &time, &rk, &rk_max, &fct_step, &nc, 
                     AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
                     BL_TO_FORTRAN_3D(stateold),
@@ -1051,6 +1194,24 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     BL_TO_FORTRAN_3D(flxy),
                     BL_TO_FORTRAN_3D(flux[2])),
                     dx, &dt_lev, &diff1, &pmin, &romin);
+#endif
+
+#if AMREX_SPACEDIM==3
+                advect(&lev, &time, &rk, &rk_max, &fct_step, &nc, 
+                    AMREX_ARLIM_3D(lo), AMREX_ARLIM_3D(hi),
+                    BL_TO_FORTRAN_3D(stateold),
+                    BL_TO_FORTRAN_3D(statex),
+                    BL_TO_FORTRAN_3D(statey),
+                    BL_TO_FORTRAN_3D(statez),
+                    BL_TO_FORTRAN_3D(stateout),
+                    AMREX_D_DECL(BL_TO_FORTRAN_3D(uvel),
+                    BL_TO_FORTRAN_3D(vvel),
+                    BL_TO_FORTRAN_3D(wvel)),
+                    AMREX_D_DECL(BL_TO_FORTRAN_3D(flxx),
+                    BL_TO_FORTRAN_3D(flxy),
+                    BL_TO_FORTRAN_3D(flxz)),
+                    dx, &dt_lev, &diff1, &pmin, &romin);                
+#endif
                 if(do_reflux && rk == rk_max && fct_step == 2){
                     // for (MFIter mfi(S_new, true); mfi.isValid(); ++mfi){
                         for(int i = 0; i < BL_SPACEDIM ; i++){
@@ -1060,10 +1221,17 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                 }
             }//for MFIter(mfi)
             ParallelDescriptor::Barrier();
-            // if(S_new.contains_nan()){
-                // Print() << "rank= " << myproc << ", does S_new contains nan before BC? " << S_new.contains_nan() 
-                // << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << "\n";
-            // }
+            Print() << "min(ro)= " << phi_new[lev].min(ro,4) << ", min(pre)= " << phi_new[lev].min(pre,4)
+            << ", min(roE)= " << phi_new[lev].min(roE,4) << ", min(mach)= " << phi_new[lev].min(mach,4) << "\n";
+
+            if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0 || S_new.min(mach,ngrow) < 0.0 || S_new.min(roE,ngrow) < 0.0){
+                Print() << "End of FCT step (before BC) = " << fct_step << ", RK= " << rk << "\n";
+                Print() << "min ro= " << S_new.min(ro,ngrow) 
+                        << ", min pre= " << S_new.min(pre,ngrow) << ", min roE= " << S_new.min(roE,ngrow)
+                        << ", min mach= " << S_new.min(mach,ngrow) <<"\n";
+                WritePlotFile();
+                amrex::Error("Pressure/density/Mach number is negative, aborting...");
+            }
             if (lev == 0){
                     S_new.FillBoundary();
                     AmrCoreAdv::FillDomainBoundary(S_new,geom1,bcs,time);
@@ -1074,6 +1242,11 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     Sconvy.FillBoundary();
                     AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
                     Sconvy.FillBoundary(geom1.periodicity());
+#if AMREX_SPACEDIM==3
+                    Sconvz.FillBoundary();
+                    AmrCoreAdv::FillDomainBoundary(Sconvz,geom1,bcs,time);
+                    Sconvz.FillBoundary(geom1.periodicity());                    
+#endif
             }
             else{
                     S_new.FillBoundary();
@@ -1085,22 +1258,40 @@ AmrCoreAdv::Advance (int lev, Real time, Real dt_lev, int iteration, int ncycle)
                     Sconvy.FillBoundary();
                     Sconvy.FillBoundary(geom1.periodicity());
                     AmrCoreAdv::FillDomainBoundary(Sconvy,geom1,bcs,time);
+#if AMREX_SPACEDIM==3
+                    Sconvz.FillBoundary();
+                    Sconvz.FillBoundary(geom1.periodicity());
+                    AmrCoreAdv::FillDomainBoundary(Sconvz,geom1,bcs,time);                    
+#endif
             }
             // Check if density/pressure/Mach number become negative
             if(S_new.min(ro,ngrow) < 0.0 || S_new.min(pre,ngrow) < 0.0 || S_new.min(mach,ngrow) < 0.0 || S_new.min(roE,ngrow) < 0.0){
-                Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+                Print() << "End of FCT step (after BC) = " << fct_step << ", RK= " << rk << "\n";
                 Print() << "min ro= " << S_new.min(ro,ngrow) 
                         << ", min pre= " << S_new.min(pre,ngrow) << ", min roE= " << S_new.min(roE,ngrow)
                         << ", min mach= " << S_new.min(mach,ngrow) <<"\n";
                 WritePlotFile();
                 amrex::Error("Pressure/density is negative, aborting...");
             }
+#if AMREX_SPACEDIM==2
             if(S_new.contains_nan() || Sconvx.contains_nan() || Sconvy.contains_nan()){
                 Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
                 Print() << "S_new contains nan after BC? " << S_new.contains_nan() 
                 << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() << "\n";
                 amrex::Error("NaN value found in conserved variables, aborting...");
             }
+#endif
+
+#if AMREX_SPACEDIM==3
+            if(S_new.contains_nan() || Sconvx.contains_nan() || Sconvy.contains_nan() 
+                || Sconvz.contains_nan()){
+                Print() << "End of FCT step= " << fct_step << ", RK= " << rk << "\n";
+                Print() << "S_new contains nan after BC? " << S_new.contains_nan() 
+                << ", " << Sconvx.contains_nan() << ", " << Sconvy.contains_nan() <<
+                Sconvz.contains_nan() << "\n";
+                amrex::Error("NaN value found in conserved variables, aborting...");
+            }
+#endif            
         ParallelDescriptor::Barrier();
         }//for(fct_step)
     }//for(rk)
